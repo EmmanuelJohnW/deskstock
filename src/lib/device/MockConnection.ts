@@ -12,7 +12,6 @@ export class MockConnection implements DeviceConnection {
   private heartbeatTimers: ReturnType<typeof setTimeout>[] = []
   private sortTimers: ReturnType<typeof setTimeout>[] = []
   private active = false
-  private runCount = 0
   private currentRunId: string | null = null
 
   connect(): void {
@@ -83,8 +82,7 @@ export class MockConnection implements DeviceConnection {
   }
 
   private runCycle(profile: string): void {
-    this.runCount++
-    const runId = `mock-${this.runCount}`
+    const runId = `mock-${Date.now()}`
     this.currentRunId = runId
     const BIN_COUNT = MOCK_BINS.length
     const totalComponents = STEPS * COMPONENTS_PER_STEP

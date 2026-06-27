@@ -1,12 +1,23 @@
 'use client'
 
+import { useState } from 'react'
 import { useDevice } from '@/lib/device/useDevice'
-import { RadialBinMap } from '@/components/RadialBinMap'
+import { RadialHexMap } from '@/components/RadialHexMap'
 import { StatusBar } from '@/components/StatusBar'
+import { TelemetryBar } from '@/components/TelemetryBar'
+import { BinCountControl } from '@/components/BinCountControl'
 
 export default function DashboardPage() {
   const device = useDevice()
+  const [binCount, setBinCount] = useState(7)
+
   const isRunning = device.runStatus === 'running'
+
+  // Live total sorted — accumulate from bins during run, use device total when complete
+  const liveSorted =
+    device.runStatus === 'complete' && device.totalSorted != null
+      ? device.totalSorted
+      : device.bins.reduce((sum, b) => sum + b.count, 0)
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -18,13 +29,28 @@ export default function DashboardPage() {
         runId={device.runId}
       />
 
-      <main className="flex-1 flex flex-col items-center justify-center gap-6 p-8">
-        <h1 className="text-xl font-semibold text-slate-300 tracking-tight">
-          Radial Sort
-        </h1>
+      <TelemetryBar
+        elapsedMs={device.elapsedMs}
+        estRemainingMs={device.estRemainingMs}
+        liveSorted={liveSorted}
+        runStatus={device.runStatus}
+      />
 
-        <RadialBinMap
+      <main className="flex-1 flex flex-col items-center justify-center gap-5 p-6">
+        <div className="flex items-center gap-4">
+          <h1 className="text-lg font-semibold text-slate-300 tracking-tight">
+            Radial Sort
+          </h1>
+          <BinCountControl
+            value={binCount}
+            onChange={setBinCount}
+            disabled={isRunning}
+          />
+        </div>
+
+        <RadialHexMap
           bins={device.bins}
+          binCount={binCount}
           runStatus={device.runStatus}
           elapsedMs={device.elapsedMs}
           estRemainingMs={device.estRemainingMs}

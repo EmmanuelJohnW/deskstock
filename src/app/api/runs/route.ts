@@ -2,32 +2,52 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
 
-// Expected persist_run Postgres function signature (run this in Supabase SQL editor):
+// ─── persist_run — run this in the Supabase SQL editor ────────────────────────
+//
+// Replaces the existing 5-param stub (which lacks p_started_at).
+// Corrections vs. the draft:
+//   • runs PK is run_id, not id
+//   • p_started_at added (wall-clock time captured by the hook)
+//   • ON CONFLICT (run_id) DO NOTHING makes re-POSTs idempotent;
+//     IF NOT FOUND guard skips bins/inventory when the run already exists
+//   • inventory upsert sets updated_at = now()
 //
 // CREATE OR REPLACE FUNCTION persist_run(
-//   p_run_id     text,
-//   p_profile    text,
-//   p_total      integer,
+//   p_run_id      text,
+//   p_profile     text,
+//   p_total       integer,
 //   p_duration_ms integer,
 //   p_started_at  timestamptz,
-//   p_bins        jsonb   -- [{idx, component, count, is_reject}]
+//   p_bins        jsonb    -- [{idx, component, count, is_reject}]
 // ) RETURNS void LANGUAGE plpgsql AS $$
 // BEGIN
-//   INSERT INTO runs (id, started_at, profile, total, duration_ms, status)
-//   VALUES (p_run_id, p_started_at, p_profile, p_total, p_duration_ms, 'complete');
+//   INSERT INTO runs (run_id, started_at, profile, total, duration_ms, status)
+//   VALUES (p_run_id, p_started_at, p_profile, p_total, p_duration_ms, 'complete')
+//   ON CONFLICT (run_id) DO NOTHING;
+//
+//   -- run_id already existed: re-POST is a no-op
+//   IF NOT FOUND THEN
+//     RETURN;
+//   END IF;
 //
 //   INSERT INTO bins (run_id, idx, component, count)
-//   SELECT p_run_id, (b->>'idx')::int, b->>'component', (b->>'count')::int
+//   SELECT p_run_id,
+//          (b->>'idx')::integer,
+//          b->>'component',
+//          (b->>'count')::integer
 //   FROM jsonb_array_elements(p_bins) AS b;
 //
 //   INSERT INTO inventory (component, in_stock)
-//   SELECT b->>'component', (b->>'count')::int
+//   SELECT b->>'component',
+//          (b->>'count')::integer
 //   FROM jsonb_array_elements(p_bins) AS b
 //   WHERE (b->>'is_reject')::boolean = false
 //   ON CONFLICT (component) DO UPDATE
-//     SET in_stock = inventory.in_stock + EXCLUDED.in_stock;
+//     SET in_stock   = inventory.in_stock + EXCLUDED.in_stock,
+//         updated_at = now();
 // END;
 // $$;
+// ──────────────────────────────────────────────────────────────────────────────
 
 const BinSchema = z.object({
   idx: z.number().int().min(0),
@@ -61,6 +81,21 @@ export async function POST(req: NextRequest) {
   }
 
   const { run_id, profile, total, duration_ms, started_at, bins } = parsed.data
+
+  // Device-authoritative integrity check: the device's reported total must equal
+  // the sum of all bin counts. A mismatch means a bin/event landed in the same
+  // tick as sort/complete and was lost — reject rather than persist corrupt data.
+  const binSum = bins.reduce((acc, b) => acc + b.count, 0)
+  if (binSum !== total) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'bin_count_mismatch',
+        detail: { bin_sum: binSum, total_claimed: total },
+      },
+      { status: 422 },
+    )
+  }
 
   // Bin with the highest idx is the reject/unknown chute — excluded from inventory
   const rejectIdx = Math.max(...bins.map(b => b.idx))

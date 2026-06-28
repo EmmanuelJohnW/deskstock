@@ -105,8 +105,10 @@ export function useDevice(): UseDeviceReturn {
     }
   }, [state.runStatus, state.runId])
 
-  // Persist completed run to /api/runs — fires once per runId, never on cancelled
+  // Persist completed run to /api/runs — dev/mock only.
+  // In production, /api/ingest owns persistence; this effect is a no-op there.
   useEffect(() => {
+    if (process.env.NEXT_PUBLIC_USE_MOCK !== 'true') return
     if (state.runStatus !== 'complete' || !state.runId) return
     if (state.runId === lastPersistedRef.current) return
 

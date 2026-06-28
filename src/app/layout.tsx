@@ -34,6 +34,7 @@ export default function RootLayout({
           <Link href="/" className="text-slate-400 hover:text-white transition-colors">Sort</Link>
           <Link href="/inventory" className="text-slate-400 hover:text-white transition-colors">Inventory</Link>
           <Link href="/borrows" className="text-slate-400 hover:text-white transition-colors">Borrows</Link>
+          <Link href="/components" className="text-slate-400 hover:text-white transition-colors">Components</Link>
         </nav>
         {children}
       </body>

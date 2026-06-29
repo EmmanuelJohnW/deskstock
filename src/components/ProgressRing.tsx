@@ -14,14 +14,14 @@ interface ProgressRingProps {
   runStatus: 'idle' | 'running' | 'complete'
   elapsedMs: number
   estRemainingMs: number | null
-  totalSorted: number | null
+  liveSorted: number
 }
 
 export function ProgressRing({
   runStatus,
   elapsedMs,
   estRemainingMs,
-  totalSorted,
+  liveSorted,
 }: ProgressRingProps) {
   const progress =
     runStatus === 'complete'
@@ -96,7 +96,7 @@ export function ProgressRing({
               Done
             </span>
             <span className="text-white text-2xl font-bold tabular-nums leading-tight">
-              {totalSorted}
+              {liveSorted}
             </span>
             <span className="text-[10px] text-slate-400">sorted</span>
           </>

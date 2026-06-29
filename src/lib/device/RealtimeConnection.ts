@@ -16,6 +16,7 @@ type LiveRunRow = {
 }
 
 export class RealtimeConnection implements DeviceConnection {
+  readonly controllable = false
   private handlers = new Set<MessageHandler>()
   private channel: RealtimeChannel | null = null
   private prevBins = new Map<number, number>()
@@ -30,10 +31,15 @@ export class RealtimeConnection implements DeviceConnection {
         { event: '*', schema: 'public', table: 'live_runs' },
         (payload) => this.handleChange(payload),
       )
-      .subscribe()
-
-    this.emit({ topic: 'device/status', payload: { online: true, rssi: 0, fw: 'realtime' } })
-    void this.catchUp(supabase)
+      .subscribe((status) => {
+        // Emit only after the channel is confirmed open — connect() fires before
+        // useDevice calls subscribe(dispatch), so any emit here is guaranteed
+        // to have handlers registered.
+        if (status === 'SUBSCRIBED') {
+          this.emit({ topic: 'device/status', payload: { online: true, rssi: 0, fw: 'realtime' } })
+          void this.catchUp(supabase)
+        }
+      })
   }
 
   disconnect(): void {
@@ -98,10 +104,11 @@ export class RealtimeConnection implements DeviceConnection {
       this.emitBinDeltas(row)
       this.emitProgress(row)
     } else if (payload.eventType === 'DELETE') {
-      // With REPLICA IDENTITY FULL, old contains the final row state
-      const row = (payload.old as unknown as LiveRunRow | null) ?? this.lastRow
+      // Use this.lastRow (updated on every UPDATE) — payload.old without
+      // REPLICA IDENTITY FULL only carries the PK, so bins would be empty.
+      const row = this.lastRow
       if (!row?.run_id) return
-      const total = (row.bins ?? []).reduce((acc: number, b: BinRow) => acc + b.count, 0)
+      const total = row.bins.reduce((acc: number, b: BinRow) => acc + b.count, 0)
       this.emit({
         topic: 'sort/complete',
         payload: { run_id: row.run_id, total, duration_ms: row.elapsed_ms },

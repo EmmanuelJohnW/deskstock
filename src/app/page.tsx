@@ -13,11 +13,13 @@ export default function DashboardPage() {
 
   const isRunning = device.runStatus === 'running'
 
-  // Live total sorted — accumulate from bins during run, use device total when complete
+  // Bin sum is always authoritative — totalSorted can be 0 if the DELETE event
+  // fired before REPLICA IDENTITY FULL was set and payload.old had no bins.
+  const binSum = device.bins.reduce((sum, b) => sum + b.count, 0)
   const liveSorted =
-    device.runStatus === 'complete' && device.totalSorted != null
-      ? device.totalSorted
-      : device.bins.reduce((sum, b) => sum + b.count, 0)
+    device.runStatus === 'complete'
+      ? Math.max(device.totalSorted ?? 0, binSum)
+      : binSum
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -54,26 +56,28 @@ export default function DashboardPage() {
           runStatus={device.runStatus}
           elapsedMs={device.elapsedMs}
           estRemainingMs={device.estRemainingMs}
-          totalSorted={device.totalSorted}
+          liveSorted={liveSorted}
         />
 
-        <div className="flex gap-3">
-          {!isRunning ? (
-            <button
-              onClick={() => device.start()}
-              className="px-8 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white font-semibold transition-colors"
-            >
-              Start
-            </button>
-          ) : (
-            <button
-              onClick={() => device.stop()}
-              className="px-8 py-2.5 rounded-lg bg-red-700 hover:bg-red-600 active:bg-red-800 text-white font-semibold transition-colors"
-            >
-              Stop
-            </button>
-          )}
-        </div>
+        {device.controllable && (
+          <div className="flex gap-3">
+            {!isRunning ? (
+              <button
+                onClick={() => device.start()}
+                className="px-8 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white font-semibold transition-colors"
+              >
+                Start
+              </button>
+            ) : (
+              <button
+                onClick={() => device.stop()}
+                className="px-8 py-2.5 rounded-lg bg-red-700 hover:bg-red-600 active:bg-red-800 text-white font-semibold transition-colors"
+              >
+                Stop
+              </button>
+            )}
+          </div>
+        )}
 
         {device.runStatus === 'complete' && device.durationMs != null && (
           <p className="text-slate-500 text-sm">

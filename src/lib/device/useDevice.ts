@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { createConnection } from './connection'
 import { INITIAL_DEVICE_STATE } from './state'
 import type { BinState, DeviceState } from './state'
@@ -71,6 +71,7 @@ function reduce(state: DeviceState, msg: DeviceMessage): DeviceState {
 export interface DeviceControls {
   start: (profile?: string) => void
   stop: () => void
+  controllable: boolean
 }
 
 export type UseDeviceReturn = DeviceState & DeviceControls
@@ -78,6 +79,7 @@ export type UseDeviceReturn = DeviceState & DeviceControls
 export function useDevice(): UseDeviceReturn {
   const [state, dispatch] = useReducer(reduce, INITIAL_DEVICE_STATE)
   const connRef = useRef<DeviceConnection | null>(null)
+  const [controllable, setControllable] = useState(false)
 
   // Tracks wall-clock start time keyed by runId so persist_run gets an accurate started_at
   const runStartRef = useRef<{ runId: string; startedAt: number } | null>(null)
@@ -87,6 +89,7 @@ export function useDevice(): UseDeviceReturn {
   useEffect(() => {
     const conn = createConnection()
     connRef.current = conn
+    setControllable(conn.controllable)
     conn.connect()
     const unsub = conn.subscribe(dispatch)
     return () => {
@@ -146,5 +149,5 @@ export function useDevice(): UseDeviceReturn {
     connRef.current?.stop()
   }, [])
 
-  return { ...state, start, stop }
+  return { ...state, start, stop, controllable }
 }

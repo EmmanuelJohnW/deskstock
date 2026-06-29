@@ -8,6 +8,7 @@ const COMPONENTS_PER_STEP = 10 // delta emitted per bin/event
 const STATUS_INTERVAL_MS = 5000
 
 export class MockConnection implements DeviceConnection {
+  readonly controllable = true
   private handlers = new Set<MessageHandler>()
   private heartbeatTimers: ReturnType<typeof setTimeout>[] = []
   private sortTimers: ReturnType<typeof setTimeout>[] = []

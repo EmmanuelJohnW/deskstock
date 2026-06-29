@@ -49,4 +49,5 @@ export interface DeviceConnection {
   subscribe(handler: MessageHandler): () => void
   start(profile?: string): void
   stop(): void
+  readonly controllable: boolean
 }

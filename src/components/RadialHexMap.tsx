@@ -17,7 +17,7 @@ interface RadialHexMapProps {
   runStatus: 'idle' | 'running' | 'complete'
   elapsedMs: number
   estRemainingMs: number | null
-  totalSorted: number | null
+  liveSorted: number
 }
 
 export function RadialHexMap({
@@ -26,7 +26,7 @@ export function RadialHexMap({
   runStatus,
   elapsedMs,
   estRemainingMs,
-  totalSorted,
+  liveSorted,
 }: RadialHexMapProps) {
   type Slot = { bin: BinState | null; isReject: boolean; isEmpty: boolean }
   const slots: Slot[] = Array.from({ length: binCount }, (_, i) => {
@@ -107,7 +107,7 @@ export function RadialHexMap({
           runStatus={runStatus}
           elapsedMs={elapsedMs}
           estRemainingMs={estRemainingMs}
-          totalSorted={totalSorted}
+          liveSorted={liveSorted}
         />
       </div>
     </div>

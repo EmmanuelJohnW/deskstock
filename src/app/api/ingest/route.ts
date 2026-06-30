@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
 import { logDeviceCall } from '@/lib/deviceLog'
+import { LIVE_RUN_STALE_MS } from '@/lib/device/liveRunStaleness'
 
 // ─── Prerequisites — run in Supabase SQL editor before deploying ──────────────
 //
@@ -123,6 +124,20 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/ingest] upsert live_runs failed:', error.message)
       return respond(supabase, 500, { success: false, error: error.message }, 'upsert live_runs failed')
     }
+
+    // Best-effort: clear out any other run's row that's gone stale (device
+    // died mid-run, no 'complete' ping ever arrived). Non-fatal if it fails —
+    // readers already filter live_runs by recency, so a leftover row is inert.
+    const staleCutoff = new Date(Date.now() - LIVE_RUN_STALE_MS).toISOString()
+    const { error: cleanupError } = await supabase
+      .from('live_runs')
+      .delete()
+      .neq('run_id', data.run_id)
+      .lt('updated_at', staleCutoff)
+    if (cleanupError) {
+      console.error('[POST /api/ingest] stale live_runs cleanup failed:', cleanupError.message)
+    }
+
     return respond(supabase, 200, { success: true }, summarizeBins(data.bins))
   }
 

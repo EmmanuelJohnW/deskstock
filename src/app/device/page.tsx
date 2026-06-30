@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { DeviceLogTerminal } from '@/components/DeviceLogTerminal'
+import { LIVE_RUN_STALE_MS } from '@/lib/device/liveRunStaleness'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,12 +37,19 @@ function timeAgo(ms: number): string {
 async function fetchStatus(): Promise<DeviceStatus> {
   const supabase = getSupabaseClient()
 
+  const liveRunCutoff = new Date(Date.now() - LIVE_RUN_STALE_MS).toISOString()
+
   const [
     { data: liveRows },
     { data: lastLog },
     { count },
   ] = await Promise.all([
-    supabase.from('live_runs').select('run_id').limit(1),
+    supabase
+      .from('live_runs')
+      .select('run_id')
+      .gte('updated_at', liveRunCutoff)
+      .order('updated_at', { ascending: false })
+      .limit(1),
     supabase
       .from('device_log')
       .select('created_at')
@@ -51,6 +59,8 @@ async function fetchStatus(): Promise<DeviceStatus> {
     supabase.from('components').select('*', { count: 'exact', head: true }),
   ])
 
+  // Rows older than the cutoff are excluded above — a lingering row from a
+  // device that died mid-run (no 'complete' ping) is treated as idle, not sorting.
   const liveRunId = (liveRows?.[0] as { run_id: string } | undefined)?.run_id ?? null
 
   const lastSeenMs = lastLog ? new Date((lastLog as { created_at: string }).created_at).getTime() : null

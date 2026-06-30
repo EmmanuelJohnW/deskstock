@@ -3,6 +3,9 @@
 import { getSupabaseClient } from '@/lib/supabase/client'
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import type { DeviceConnection, DeviceMessage, MessageHandler } from './types'
+import { LIVE_RUN_STALE_MS } from './liveRunStaleness'
+
+const STALE_CHECK_INTERVAL_MS = 10_000
 
 type BinRow = { idx: number; component: string; count: number }
 
@@ -13,6 +16,7 @@ type LiveRunRow = {
   est_remaining_ms: number | null
   bins: BinRow[]
   profile: string
+  updated_at: string
 }
 
 export class RealtimeConnection implements DeviceConnection {
@@ -21,6 +25,7 @@ export class RealtimeConnection implements DeviceConnection {
   private channel: RealtimeChannel | null = null
   private prevBins = new Map<number, number>()
   private lastRow: LiveRunRow | null = null
+  private staleWatchdog: ReturnType<typeof setInterval> | null = null
 
   connect(): void {
     const supabase = getSupabaseClient()
@@ -40,6 +45,10 @@ export class RealtimeConnection implements DeviceConnection {
           void this.catchUp(supabase)
         }
       })
+
+    // Push events only fire when the row changes — if the device dies mid-run,
+    // nothing ever arrives to clear lastRow. Poll our own cached state instead.
+    this.staleWatchdog = setInterval(() => this.checkStaleness(), STALE_CHECK_INTERVAL_MS)
   }
 
   disconnect(): void {
@@ -48,6 +57,10 @@ export class RealtimeConnection implements DeviceConnection {
     this.handlers.clear()
     this.prevBins.clear()
     this.lastRow = null
+    if (this.staleWatchdog) {
+      clearInterval(this.staleWatchdog)
+      this.staleWatchdog = null
+    }
   }
 
   subscribe(handler: MessageHandler): () => void {
@@ -64,7 +77,15 @@ export class RealtimeConnection implements DeviceConnection {
   }
 
   private async catchUp(supabase: ReturnType<typeof getSupabaseClient>): Promise<void> {
-    const { data } = await supabase.from('live_runs').select('*')
+    // A row left over from a device that died mid-run (no 'complete' ping)
+    // must not be picked back up as an in-progress sort on page load.
+    const cutoff = new Date(Date.now() - LIVE_RUN_STALE_MS).toISOString()
+    const { data } = await supabase
+      .from('live_runs')
+      .select('*')
+      .gte('updated_at', cutoff)
+      .order('updated_at', { ascending: false })
+      .limit(1)
     const row = data?.[0] ? (data[0] as LiveRunRow) : null
     if (!row) return
     this.lastRow = row
@@ -130,6 +151,20 @@ export class RealtimeConnection implements DeviceConnection {
       }
     }
     this.prevBins = new Map(row.bins.map(b => [b.idx, b.count]))
+  }
+
+  // No DELETE event ever arrives if the device just stops pinging — treat a
+  // run as abandoned once its last update falls outside the staleness window,
+  // and clear it the same way an explicit stop() would (sort/cancelled).
+  private checkStaleness(): void {
+    if (!this.lastRow) return
+    const age = Date.now() - new Date(this.lastRow.updated_at).getTime()
+    if (age < LIVE_RUN_STALE_MS) return
+
+    const runId = this.lastRow.run_id
+    this.prevBins.clear()
+    this.lastRow = null
+    this.emit({ topic: 'sort/cancelled', payload: { run_id: runId } })
   }
 
   private emitProgress(row: LiveRunRow): void {

@@ -37,37 +37,34 @@ interface HexBinProps {
 }
 
 export function HexBin({ idx, component, count, isReject, isEmpty }: HexBinProps) {
-  if (isEmpty) {
-    return (
-      <div
-        className="w-full h-full opacity-60"
-        style={{ clipPath: HEX_CLIP, background: '#f3f4f6' }}
-      />
-    )
-  }
+  const Icon = isEmpty || isReject ? Package : resolveIcon(component)
 
-  const Icon = isReject ? Package : resolveIcon(component)
-
-  const bg = isReject
+  const bg = isEmpty
+    ? '#e2e5ea'
+    : isReject
     ? 'linear-gradient(160deg, #fff1f2 0%, #fecdd3 100%)'
     : 'linear-gradient(160deg, #ecfdf5 0%, #d1fae5 100%)'
 
-  const iconColor  = isReject ? '#e11d48' : '#059669'
-  const countColor = isReject ? '#e11d48' : '#059669'
+  const accentColor = isEmpty ? '#9ca3af' : isReject ? '#e11d48' : '#059669'
   const labelColor = '#9ca3af'
-  const binLabel   = isReject ? 'REJECT' : `BIN ${idx}`
-  const binLabelColor = isReject ? '#fda4af' : '#d1d5db'
+  const binLabel = isReject ? 'REJECT' : `BIN ${idx}`
+  const binLabelColor = isEmpty ? '#9ca3af' : isReject ? '#fda4af' : '#d1d5db'
+  const displayComponent = isEmpty ? 'Empty' : component
 
   return (
     <div
-      className="w-full h-full flex flex-col items-center justify-center select-none"
-      style={{ clipPath: HEX_CLIP, background: bg }}
+      className="w-full h-full flex flex-col items-center justify-center select-none box-border"
+      style={{
+        clipPath: HEX_CLIP,
+        background: bg,
+        border: isEmpty ? '1px solid #c4c9d2' : 'none',
+      }}
     >
-      <Icon style={{ color: iconColor, width: 15, height: 15, flexShrink: 0 }} />
+      <Icon style={{ color: accentColor, width: 15, height: 15, flexShrink: 0 }} />
 
       <span
         className="font-mono font-bold tabular-nums leading-none mt-1"
-        style={{ fontSize: 22, color: countColor }}
+        style={{ fontSize: 22, color: accentColor }}
       >
         {count}
       </span>
@@ -84,7 +81,7 @@ export function HexBin({ idx, component, count, isReject, isEmpty }: HexBinProps
           whiteSpace: 'nowrap',
         }}
       >
-        {component}
+        {displayComponent}
       </span>
 
       <span

@@ -4,25 +4,22 @@ import { getServerClient } from '@/lib/supabase/server'
 
 // ─── persist_run — run this in the Supabase SQL editor ────────────────────────
 //
-// Replaces the existing 5-param stub (which lacks p_started_at).
-// Corrections vs. the draft:
-//   • runs PK is run_id, not id
-//   • p_started_at added (wall-clock time captured by the hook)
-//   • ON CONFLICT (run_id) DO NOTHING makes re-POSTs idempotent;
-//     IF NOT FOUND guard skips bins/inventory when the run already exists
-//   • inventory upsert sets updated_at = now()
+// Writes the runs row and bin snapshots only.
+// inventory_ledger is never touched here — sort_session deltas are written
+// to inventory_ledger only during session reconciliation (Finish Count).
 //
-// CREATE OR REPLACE FUNCTION persist_run(
+// CREATE OR REPLACE FUNCTION public.persist_run(
 //   p_run_id      text,
 //   p_profile     text,
 //   p_total       integer,
 //   p_duration_ms integer,
 //   p_started_at  timestamptz,
-//   p_bins        jsonb    -- [{idx, component, count, is_reject}]
+//   p_bins        jsonb,        -- [{idx, component, count}]
+//   p_session_id  bigint default null
 // ) RETURNS void LANGUAGE plpgsql AS $$
 // BEGIN
-//   INSERT INTO runs (run_id, started_at, profile, total, duration_ms, status)
-//   VALUES (p_run_id, p_started_at, p_profile, p_total, p_duration_ms, 'complete')
+//   INSERT INTO runs (run_id, started_at, profile, total, duration_ms, status, session_id)
+//   VALUES (p_run_id, p_started_at, p_profile, p_total, p_duration_ms, 'complete', p_session_id)
 //   ON CONFLICT (run_id) DO NOTHING;
 //
 //   -- run_id already existed: re-POST is a no-op
@@ -36,15 +33,6 @@ import { getServerClient } from '@/lib/supabase/server'
 //          b->>'component',
 //          (b->>'count')::integer
 //   FROM jsonb_array_elements(p_bins) AS b;
-//
-//   INSERT INTO inventory (component, in_stock)
-//   SELECT b->>'component',
-//          (b->>'count')::integer
-//   FROM jsonb_array_elements(p_bins) AS b
-//   WHERE (b->>'is_reject')::boolean = false
-//   ON CONFLICT (component) DO UPDATE
-//     SET in_stock   = inventory.in_stock + EXCLUDED.in_stock,
-//         updated_at = now();
 // END;
 // $$;
 // ──────────────────────────────────────────────────────────────────────────────

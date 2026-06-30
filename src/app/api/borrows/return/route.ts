@@ -2,6 +2,43 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
 
+// ─── return_borrow — run in Supabase SQL editor ──────────────────────────────
+//
+// Replaces the previous version that mutated inventory.in_stock.
+// Marks the borrow returned and writes a 'return' ledger entry atomically.
+// The already_returned guard is preserved.
+//
+// CREATE OR REPLACE FUNCTION public.return_borrow(p_borrow_id uuid)
+// RETURNS void LANGUAGE plpgsql AS $$
+// DECLARE
+//   v_component   text;
+//   v_qty         integer;
+//   v_returned_at timestamptz;
+// BEGIN
+//   SELECT component, qty, returned_at
+//   INTO   v_component, v_qty, v_returned_at
+//   FROM   borrows
+//   WHERE  id = p_borrow_id;
+//
+//   IF NOT FOUND THEN
+//     RAISE EXCEPTION 'borrow_not_found';
+//   END IF;
+//
+//   IF v_returned_at IS NOT NULL THEN
+//     RAISE EXCEPTION 'already_returned';
+//   END IF;
+//
+//   UPDATE borrows
+//   SET    returned_at = now()
+//   WHERE  id = p_borrow_id;
+//
+//   INSERT INTO inventory_ledger (component, delta, reason)
+//   VALUES (v_component, v_qty, 'return');
+// END;
+// $$;
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
 const ReturnSchema = z.object({
   borrow_id: z.string().uuid(),
 })

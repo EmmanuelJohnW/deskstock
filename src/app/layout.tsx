@@ -36,6 +36,7 @@ export default function RootLayout({
           <Link href="/borrows" className="text-slate-400 hover:text-white transition-colors">Borrows</Link>
           <Link href="/components" className="text-slate-400 hover:text-white transition-colors">Components</Link>
           <Link href="/device" className="text-slate-400 hover:text-white transition-colors">Device</Link>
+          <Link href="/reports" className="text-slate-400 hover:text-white transition-colors">Reports</Link>
         </nav>
         {children}
       </body>

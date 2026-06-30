@@ -15,7 +15,7 @@ interface Borrow {
 
 interface InventoryItem {
   component: string
-  in_stock: number
+  qty: number
 }
 
 const EMPTY_FORM = { component: '', qty: '1', borrower: '', due_at: '' }
@@ -49,10 +49,10 @@ export default function BorrowsPage() {
     const supabase = getSupabaseClient()
     const [{ data: borrowData }, { data: invData }] = await Promise.all([
       supabase.from('borrows').select('*').order('taken_at', { ascending: false }),
-      supabase.from('inventory').select('component, in_stock').order('component'),
+      supabase.rpc('get_inventory'),
     ])
-    setBorrows(((borrowData ?? []) as unknown as Borrow[]))
-    setInventory(((invData ?? []) as unknown as InventoryItem[]))
+    setBorrows((borrowData ?? []) as unknown as Borrow[])
+    setInventory((invData ?? []) as unknown as InventoryItem[])
     setLoading(false)
   }, [])
 
@@ -133,7 +133,7 @@ export default function BorrowsPage() {
               <option value="">Select…</option>
               {inventory.map(item => (
                 <option key={item.component} value={item.component}>
-                  {item.component} ({item.in_stock} in stock)
+                  {item.component} ({item.qty} available)
                 </option>
               ))}
             </select>

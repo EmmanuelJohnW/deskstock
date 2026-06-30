@@ -3,15 +3,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
 
-// ─── SQL — run in Supabase SQL editor ─────────────────────────────────────────
+// ─── Migration SQL — run in Supabase SQL editor ───────────────────────────────
+//
+// -- Drop old table (test data discarded)
+// drop table if exists public.components;
 //
 // create table public.components (
-//   id           bigint generated always as identity primary key,
-//   name         text        not null,
-//   weight_mg    integer     not null,
-//   tolerance_mg integer     not null default 50,
-//   bin_idx      integer     not null unique check (bin_idx between 0 and 5),
-//   created_at   timestamptz not null default now()
+//   id         bigint generated always as identity primary key,
+//   name       text        not null unique,
+//   weight_g   numeric     not null,
+//   created_at timestamptz not null default now()
 // );
 //
 // alter table public.components enable row level security;
@@ -19,13 +20,11 @@ import { getServerClient } from '@/lib/supabase/server'
 // create policy "public read components"
 //   on public.components for select using (true);
 //
-// ──────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 const ComponentFields = z.object({
   name: z.string().min(1),
-  weight_mg: z.number().int().min(1),
-  tolerance_mg: z.number().int().min(1),
-  bin_idx: z.number().int().min(0).max(5),
+  weight_g: z.number().positive(),
 })
 
 const CreateSchema = ComponentFields
@@ -38,7 +37,7 @@ const DeleteSchema = z.object({
   id: z.number().int().positive(),
 })
 
-function binConflict(error: { code: string; message: string }) {
+function isUniqueViolation(error: { code: string }) {
   return error.code === '23505'
 }
 
@@ -57,8 +56,8 @@ export async function POST(req: NextRequest) {
 
   const { error } = await getServerClient().from('components').insert(parsed.data)
   if (error) {
-    if (binConflict(error)) {
-      return NextResponse.json({ success: false, error: 'bin_taken' }, { status: 409 })
+    if (isUniqueViolation(error)) {
+      return NextResponse.json({ success: false, error: 'name_taken' }, { status: 409 })
     }
     console.error('[POST /api/components]', error.message)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
@@ -83,8 +82,8 @@ export async function PUT(req: NextRequest) {
   const { id, ...fields } = parsed.data
   const { error } = await getServerClient().from('components').update(fields).eq('id', id)
   if (error) {
-    if (binConflict(error)) {
-      return NextResponse.json({ success: false, error: 'bin_taken' }, { status: 409 })
+    if (isUniqueViolation(error)) {
+      return NextResponse.json({ success: false, error: 'name_taken' }, { status: 409 })
     }
     console.error('[PUT /api/components]', error.message)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })

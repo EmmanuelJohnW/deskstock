@@ -6,31 +6,14 @@ import { getSupabaseClient } from '@/lib/supabase/client'
 interface ComponentRow {
   id: number
   name: string
-  weight_mg: number
-  tolerance_mg: number
-  bin_idx: number
+  weight_g: number   // numeric comes back as a parseable value; treated as number
   created_at: string
 }
 
-const ALL_BINS = [0, 1, 2, 3, 4, 5] as const
-const EMPTY_FORM = { name: '', weight_mg: '', tolerance_mg: '50', bin_idx: '' }
+const EMPTY_FORM = { name: '', weight_g: '' }
 
 const INPUT_CLS =
   'bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-600'
-
-function findOverlap(
-  components: ComponentRow[],
-  weight: number,
-  tolerance: number,
-  excludeId?: number,
-): ComponentRow | undefined {
-  const lo = weight - tolerance
-  const hi = weight + tolerance
-  return components.find(c => {
-    if (excludeId !== undefined && c.id === excludeId) return false
-    return lo <= c.weight_mg + c.tolerance_mg && c.weight_mg - c.tolerance_mg <= hi
-  })
-}
 
 export default function ComponentsPage() {
   const [components, setComponents] = useState<ComponentRow[]>([])
@@ -39,52 +22,22 @@ export default function ComponentsPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const [overlapWarning, setOverlapWarning] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const { data } = await getSupabaseClient()
       .from('components')
       .select('*')
-      .order('bin_idx', { ascending: true })
+      .order('name', { ascending: true })
     setComponents((data ?? []) as unknown as ComponentRow[])
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
 
-  // Live overlap warning — recomputes whenever weight/tolerance or the list changes
-  useEffect(() => {
-    const w = Number(form.weight_mg)
-    const t = Number(form.tolerance_mg)
-    if (!form.weight_mg || !form.tolerance_mg || w <= 0 || t <= 0) {
-      setOverlapWarning(null)
-      return
-    }
-    const clash = findOverlap(components, w, t, editing?.id)
-    setOverlapWarning(
-      clash
-        ? `Weight window [${w - t}–${w + t}] mg overlaps "${clash.name}" ` +
-          `([${clash.weight_mg - clash.tolerance_mg}–${clash.weight_mg + clash.tolerance_mg}] mg) ` +
-          `— sorter cannot distinguish them by weight.`
-        : null,
-    )
-  }, [form.weight_mg, form.tolerance_mg, components, editing?.id])
-
-  // Bins used by all components except the one currently being edited
-  const takenBins = new Set(
-    components.filter(c => !editing || c.id !== editing.id).map(c => c.bin_idx),
-  )
-  const availableBins = ALL_BINS.filter(b => !takenBins.has(b))
-
   function startEdit(c: ComponentRow) {
     setEditing(c)
-    setForm({
-      name: c.name,
-      weight_mg: String(c.weight_mg),
-      tolerance_mg: String(c.tolerance_mg),
-      bin_idx: String(c.bin_idx),
-    })
+    setForm({ name: c.name, weight_g: String(c.weight_g) })
     setFormError(null)
   }
 
@@ -92,7 +45,6 @@ export default function ComponentsPage() {
     setEditing(null)
     setForm(EMPTY_FORM)
     setFormError(null)
-    setOverlapWarning(null)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -102,9 +54,7 @@ export default function ComponentsPage() {
 
     const payload = {
       name: form.name.trim(),
-      weight_mg: Number(form.weight_mg),
-      tolerance_mg: Number(form.tolerance_mg),
-      bin_idx: Number(form.bin_idx),
+      weight_g: parseFloat(form.weight_g),
       ...(editing ? { id: editing.id } : {}),
     }
 
@@ -117,8 +67,8 @@ export default function ComponentsPage() {
     if (!res.ok) {
       const body = (await res.json()) as { error: string | object }
       setFormError(
-        body.error === 'bin_taken'
-          ? 'That bin is already assigned to another component.'
+        body.error === 'name_taken'
+          ? 'A component with that name already exists.'
           : typeof body.error === 'string'
           ? body.error
           : JSON.stringify(body.error),
@@ -170,47 +120,22 @@ export default function ComponentsPage() {
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               required
               placeholder="e.g. 10kΩ"
-              className={`${INPUT_CLS} w-36`}
+              className={`${INPUT_CLS} w-40`}
             />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500 uppercase tracking-wider">Weight (mg)</label>
+            <label className="text-xs text-slate-500 uppercase tracking-wider">Weight (g)</label>
             <input
               type="number"
-              min={1}
-              value={form.weight_mg}
-              onChange={e => setForm(f => ({ ...f, weight_mg: e.target.value }))}
+              step="0.001"
+              min="0.001"
+              value={form.weight_g}
+              onChange={e => setForm(f => ({ ...f, weight_g: e.target.value }))}
               required
-              className={`${INPUT_CLS} w-28`}
+              placeholder="e.g. 0.240"
+              className={`${INPUT_CLS} w-32`}
             />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500 uppercase tracking-wider">Tolerance (mg)</label>
-            <input
-              type="number"
-              min={1}
-              value={form.tolerance_mg}
-              onChange={e => setForm(f => ({ ...f, tolerance_mg: e.target.value }))}
-              required
-              className={`${INPUT_CLS} w-28`}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500 uppercase tracking-wider">Bin</label>
-            <select
-              value={form.bin_idx}
-              onChange={e => setForm(f => ({ ...f, bin_idx: e.target.value }))}
-              required
-              className={`${INPUT_CLS} w-24`}
-            >
-              <option value="">—</option>
-              {availableBins.map(b => (
-                <option key={b} value={b}>Bin {b}</option>
-              ))}
-            </select>
           </div>
 
           <div className="flex gap-2">
@@ -233,19 +158,14 @@ export default function ComponentsPage() {
           </div>
         </form>
 
-        {overlapWarning && (
-          <p className="mt-3 text-amber-400 text-sm">⚠ {overlapWarning}</p>
-        )}
         {formError && <p className="mt-2 text-red-400 text-sm">{formError}</p>}
       </section>
 
-      {/* ── Registered components table ── */}
+      {/* ── Component list ── */}
       <section>
         <h2 className="text-lg font-semibold text-slate-200 mb-4">
           Registered Components{' '}
-          <span className="text-slate-500 font-normal text-base">
-            ({components.length} / 6 bins)
-          </span>
+          <span className="text-slate-500 font-normal text-base">({components.length})</span>
         </h2>
         {deleteError && <p className="mb-3 text-red-400 text-sm">{deleteError}</p>}
 
@@ -253,17 +173,15 @@ export default function ComponentsPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-left">
               <tr>
-                {['Bin', 'Name', 'Weight (mg)', 'Tolerance (mg)', 'Window (mg)', ''].map(h => (
-                  <th key={h} className="px-4 py-3 text-slate-400 font-medium whitespace-nowrap">
-                    {h}
-                  </th>
+                {['Name', 'Weight (g)', ''].map(h => (
+                  <th key={h} className="px-4 py-3 text-slate-400 font-medium">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               {components.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-600">
+                  <td colSpan={3} className="px-4 py-8 text-center text-slate-600">
                     No components registered yet.
                   </td>
                 </tr>
@@ -273,16 +191,9 @@ export default function ComponentsPage() {
                     key={c.id}
                     className={`hover:bg-slate-900/50 ${editing?.id === c.id ? 'bg-slate-900/80' : ''}`}
                   >
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-700 text-cyan-400 font-bold text-xs">
-                        {c.bin_idx}
-                      </span>
-                    </td>
                     <td className="px-4 py-3 text-white font-mono">{c.name}</td>
-                    <td className="px-4 py-3 tabular-nums text-slate-300">{c.weight_mg}</td>
-                    <td className="px-4 py-3 tabular-nums text-slate-400">±{c.tolerance_mg}</td>
-                    <td className="px-4 py-3 tabular-nums text-slate-500 font-mono text-xs">
-                      {c.weight_mg - c.tolerance_mg}–{c.weight_mg + c.tolerance_mg}
+                    <td className="px-4 py-3 tabular-nums text-slate-300 font-mono">
+                      {Number(c.weight_g).toFixed(3)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">

@@ -2,6 +2,46 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
 
+// ─── borrow_component — run in Supabase SQL editor ───────────────────────────
+//
+// Replaces the previous version that mutated inventory.in_stock.
+// Now checks available stock from the ledger sum and writes a 'borrow' ledger
+// entry atomically with the borrows row. The borrows table is kept intact —
+// it remains the record of who has what and when it's due.
+//
+// CREATE OR REPLACE FUNCTION public.borrow_component(
+//   p_component text,
+//   p_qty       integer,
+//   p_borrower  text,
+//   p_due_at    timestamptz
+// ) RETURNS uuid LANGUAGE plpgsql AS $$
+// DECLARE
+//   v_available integer;
+//   v_borrow_id uuid;
+// BEGIN
+//   -- Net ledger balance is the authoritative available quantity.
+//   SELECT COALESCE(SUM(delta), 0)
+//   INTO   v_available
+//   FROM   inventory_ledger
+//   WHERE  component = p_component;
+//
+//   IF v_available < p_qty THEN
+//     RAISE EXCEPTION 'insufficient_stock';
+//   END IF;
+//
+//   INSERT INTO borrows (component, qty, borrower, due_at)
+//   VALUES (p_component, p_qty, p_borrower, p_due_at)
+//   RETURNING id INTO v_borrow_id;
+//
+//   INSERT INTO inventory_ledger (component, delta, reason)
+//   VALUES (p_component, -p_qty, 'borrow');
+//
+//   RETURN v_borrow_id;
+// END;
+// $$;
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
 const BorrowSchema = z.object({
   component: z.string().min(1),
   qty: z.number().int().min(1),

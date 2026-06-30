@@ -1,6 +1,6 @@
 const RING_SIZE = 130
-const CENTER = RING_SIZE / 2
-const RADIUS = 54
+const CENTER    = RING_SIZE / 2
+const RADIUS    = 54
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
 function formatMs(ms: number): string {
@@ -17,12 +17,7 @@ interface ProgressRingProps {
   liveSorted: number
 }
 
-export function ProgressRing({
-  runStatus,
-  elapsedMs,
-  estRemainingMs,
-  liveSorted,
-}: ProgressRingProps) {
+export function ProgressRing({ runStatus, elapsedMs, estRemainingMs, liveSorted }: ProgressRingProps) {
   const progress =
     runStatus === 'complete'
       ? 1
@@ -30,10 +25,8 @@ export function ProgressRing({
       ? elapsedMs / (elapsedMs + estRemainingMs)
       : 0
 
-  const dashOffset = CIRCUMFERENCE * (1 - progress)
-
-  const strokeColor =
-    runStatus === 'complete' ? '#22c55e' : runStatus === 'running' ? '#06b6d4' : '#334155'
+  const dashOffset  = CIRCUMFERENCE * (1 - progress)
+  const strokeColor = runStatus === 'idle' ? '#d1d5db' : '#059669'
 
   return (
     <div
@@ -47,18 +40,9 @@ export function ProgressRing({
         className="absolute inset-0"
         style={{ transform: 'rotate(-90deg)' }}
       >
+        <circle cx={CENTER} cy={CENTER} r={RADIUS} fill="none" stroke="#e5e7eb" strokeWidth={7} />
         <circle
-          cx={CENTER}
-          cy={CENTER}
-          r={RADIUS}
-          fill="none"
-          stroke="#1e293b"
-          strokeWidth={7}
-        />
-        <circle
-          cx={CENTER}
-          cy={CENTER}
-          r={RADIUS}
+          cx={CENTER} cy={CENTER} r={RADIUS}
           fill="none"
           stroke={strokeColor}
           strokeWidth={7}
@@ -71,19 +55,19 @@ export function ProgressRing({
 
       <div className="relative z-10 flex flex-col items-center justify-center text-center px-3">
         {runStatus === 'idle' && (
-          <span className="text-slate-500 text-xs">Waiting…</span>
+          <span className="text-gray-400 text-xs">Waiting…</span>
         )}
 
         {runStatus === 'running' && (
           <>
-            <span className="text-[9px] text-cyan-500 uppercase tracking-widest font-medium">
+            <span className="text-[9px] text-emerald-600 uppercase tracking-widest font-medium">
               Running
             </span>
-            <span className="text-white text-base font-bold font-mono tabular-nums leading-tight">
+            <span className="text-gray-900 text-base font-bold font-mono tabular-nums leading-tight">
               {formatMs(elapsedMs)}
             </span>
             {estRemainingMs != null && (
-              <span className="text-[10px] text-slate-400 font-mono">
+              <span className="text-[10px] text-gray-400 font-mono">
                 ~{formatMs(estRemainingMs)}
               </span>
             )}
@@ -92,13 +76,13 @@ export function ProgressRing({
 
         {runStatus === 'complete' && (
           <>
-            <span className="text-[9px] text-green-400 uppercase tracking-widest font-medium">
+            <span className="text-[9px] text-emerald-600 uppercase tracking-widest font-medium">
               Done
             </span>
-            <span className="text-white text-2xl font-bold tabular-nums leading-tight">
+            <span className="text-gray-900 text-2xl font-bold tabular-nums leading-tight">
               {liveSorted}
             </span>
-            <span className="text-[10px] text-slate-400">sorted</span>
+            <span className="text-[10px] text-gray-400">sorted</span>
           </>
         )}
       </div>

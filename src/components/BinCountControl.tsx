@@ -9,8 +9,8 @@ interface BinCountControlProps {
 
 export function BinCountControl({ value, onChange, disabled }: BinCountControlProps) {
   const btnBase =
-    'w-7 h-7 rounded flex items-center justify-center bg-slate-800 text-white font-bold text-base transition-colors'
-  const btnEnabled = 'hover:bg-slate-700 active:bg-slate-600'
+    'w-7 h-7 rounded flex items-center justify-center bg-gray-100 text-gray-900 font-bold text-base transition-colors'
+  const btnEnabled  = 'hover:bg-gray-200 active:bg-gray-300'
   const btnDisabled = 'opacity-40 cursor-not-allowed'
 
   return (
@@ -23,7 +23,7 @@ export function BinCountControl({ value, onChange, disabled }: BinCountControlPr
       >
         −
       </button>
-      <span className="w-5 text-center text-white font-mono font-semibold tabular-nums">
+      <span className="w-5 text-center text-gray-900 font-mono font-semibold tabular-nums">
         {value}
       </span>
       <button

@@ -14,10 +14,10 @@ interface TelemetryBarProps {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5 min-w-[80px]">
-      <span className="text-[9px] text-slate-500 uppercase tracking-widest font-medium">
+      <span className="text-[9px] text-gray-400 uppercase tracking-widest font-medium">
         {label}
       </span>
-      <span className="text-white font-mono font-semibold text-sm tabular-nums">
+      <span className="text-gray-900 font-mono font-semibold text-sm tabular-nums">
         {value}
       </span>
     </div>
@@ -33,24 +33,14 @@ export function TelemetryBar({ elapsedMs, estRemainingMs, liveSorted, runStatus 
   const isActive = runStatus !== 'idle'
 
   return (
-    <div className="flex gap-8 px-6 py-3 bg-slate-900/70 border-b border-slate-800 backdrop-blur">
-      <Stat label="Elapsed" value={isActive ? fmtMs(elapsedMs) : '—'} />
+    <div className="flex gap-8 px-6 py-3 bg-gray-50 border-b border-gray-200">
+      <Stat label="Elapsed"   value={isActive ? fmtMs(elapsedMs) : '—'} />
       <Stat
         label="Remaining"
-        value={
-          runStatus === 'running' && estRemainingMs != null
-            ? `~${fmtMs(estRemainingMs)}`
-            : '—'
-        }
+        value={runStatus === 'running' && estRemainingMs != null ? `~${fmtMs(estRemainingMs)}` : '—'}
       />
-      <Stat
-        label="Rate"
-        value={ratePerMin != null ? `${ratePerMin}/min` : '—'}
-      />
-      <Stat
-        label="Sorted"
-        value={isActive && liveSorted > 0 ? String(liveSorted) : '—'}
-      />
+      <Stat label="Rate"   value={ratePerMin != null ? `${ratePerMin}/min` : '—'} />
+      <Stat label="Sorted" value={isActive && liveSorted > 0 ? String(liveSorted) : '—'} />
     </div>
   )
 }

@@ -11,7 +11,7 @@ type StatusKind = 'sorting' | 'recent' | 'stale' | 'never'
 interface DeviceStatus {
   kind: StatusKind
   liveRunId: string | null
-  lastSeenMs: number | null  // wall-clock ms of last run completion
+  lastSeenMs: number | null
   componentCount: number
 }
 
@@ -59,7 +59,7 @@ async function fetchStatus(): Promise<DeviceStatus> {
   } else if (lastSeenMs === null) {
     kind = 'never'
   } else if (Date.now() - lastSeenMs < 2 * 60 * 60 * 1000) {
-    kind = 'recent'   // seen within 2 hours
+    kind = 'recent'
   } else {
     kind = 'stale'
   }
@@ -83,13 +83,13 @@ function CopyField({ value, dim }: { value: string; dim?: boolean }) {
   }
 
   return (
-    <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5">
-      <span className={`flex-1 font-mono text-sm truncate ${dim ? 'text-slate-500' : 'text-slate-300'}`}>
+    <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5">
+      <span className={`flex-1 font-mono text-sm truncate ${dim ? 'text-gray-400' : 'text-gray-700'}`}>
         {value}
       </span>
       <button
         onClick={copy}
-        className="shrink-0 text-xs font-medium px-2 py-1 rounded transition-colors bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+        className="shrink-0 text-xs font-medium px-2 py-1 rounded transition-colors bg-white border border-gray-200 hover:bg-gray-100 text-gray-500 hover:text-gray-900"
       >
         {copied ? '✓ Copied' : 'Copy'}
       </button>
@@ -102,12 +102,12 @@ function CopyField({ value, dim }: { value: string; dim?: boolean }) {
 function StatusBadge({ status }: { status: DeviceStatus }) {
   const configs: Record<StatusKind, { dot: string; label: string; sub: string }> = {
     sorting: {
-      dot: 'bg-green-400 animate-pulse',
+      dot: 'bg-emerald-500 animate-pulse',
       label: 'Sorting now',
       sub: `Run ${status.liveRunId ?? ''}`,
     },
     recent: {
-      dot: 'bg-cyan-400',
+      dot: 'bg-emerald-500',
       label: 'Online',
       sub: status.lastSeenMs ? `Last run completed ${timeAgo(status.lastSeenMs)}` : '',
     },
@@ -117,7 +117,7 @@ function StatusBadge({ status }: { status: DeviceStatus }) {
       sub: status.lastSeenMs ? `Last seen ${timeAgo(status.lastSeenMs)}` : '',
     },
     never: {
-      dot: 'bg-slate-600',
+      dot: 'bg-gray-300',
       label: 'Never seen',
       sub: 'No ingest traffic recorded yet',
     },
@@ -126,11 +126,11 @@ function StatusBadge({ status }: { status: DeviceStatus }) {
   const { dot, label, sub } = configs[status.kind]
 
   return (
-    <div className="flex items-center gap-4 p-5 rounded-xl bg-slate-900 border border-slate-800">
+    <div className="flex items-center gap-4 p-5 rounded-xl bg-white border border-gray-200">
       <span className={`w-3 h-3 rounded-full shrink-0 ${dot}`} />
       <div>
-        <p className="text-white font-semibold">{label}</p>
-        {sub && <p className="text-slate-500 text-sm mt-0.5">{sub}</p>}
+        <p className="text-gray-900 font-semibold">{label}</p>
+        {sub && <p className="text-gray-500 text-sm mt-0.5">{sub}</p>}
       </div>
     </div>
   )
@@ -140,7 +140,7 @@ function StatusBadge({ status }: { status: DeviceStatus }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">
+    <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
       {children}
     </h2>
   )
@@ -157,12 +157,12 @@ const SETUP_STEPS = [
   {
     n: 2,
     title: 'Fetch the weight table',
-    body: 'On each run start, GET /api/run-config with the Authorization header. The response is [{name, weight_mg, tolerance_mg, bin_idx}] — load it into RAM as your local matching table.',
+    body: 'On each run start, GET /api/run-config with the Authorization header. The response is [{name, weight_g}] — load it into RAM as your local matching table.',
   },
   {
     n: 3,
     title: 'Sort locally',
-    body: 'Weigh each component. Walk the table: if measured_weight falls within [weight_mg − tolerance_mg, weight_mg + tolerance_mg], route to that bin_idx. No match → bin 6 (reject chute). All matching is on-device; no round-trip per part.',
+    body: 'Weigh each component. Walk the table: find the closest weight match within tolerance. No match → bin 6 (reject chute). All matching is on-device; no round-trip per part.',
   },
   {
     n: 4,
@@ -219,7 +219,7 @@ export default function DevicePage() {
           <SectionLabel>Device status</SectionLabel>
           <button
             onClick={refresh}
-            className="text-xs text-slate-600 hover:text-slate-400 transition-colors font-mono"
+            className="text-xs text-gray-400 hover:text-gray-700 transition-colors font-mono"
           >
             {lastRefresh > 0
               ? `Refreshed ${timeAgo(lastRefresh)} · Refresh`
@@ -230,7 +230,7 @@ export default function DevicePage() {
         {status ? (
           <StatusBadge status={status} />
         ) : (
-          <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 text-slate-600 text-sm">
+          <div className="p-5 rounded-xl bg-white border border-gray-200 text-gray-400 text-sm">
             Checking…
           </div>
         )}
@@ -239,20 +239,20 @@ export default function DevicePage() {
       {/* ── Component registry ── */}
       <section>
         <SectionLabel>Component registry</SectionLabel>
-        <div className="flex items-center justify-between p-5 rounded-xl bg-slate-900 border border-slate-800">
+        <div className="flex items-center justify-between p-5 rounded-xl bg-white border border-gray-200">
           <div>
-            <p className="text-white font-semibold">
+            <p className="text-gray-900 font-semibold">
               {status === null ? '—' : status.componentCount} component{status?.componentCount !== 1 ? 's' : ''} registered
             </p>
-            <p className="text-slate-500 text-sm mt-0.5">
+            <p className="text-gray-500 text-sm mt-0.5">
               {status?.componentCount === 0
                 ? 'Register at least one component before the first run.'
-                : 'Bins 0–5 assigned; bin 6 is the reject chute (not stored).'}
+                : 'Bins 0–5 assigned dynamically; bin 6 is the reject chute.'}
             </p>
           </div>
           <Link
             href="/components"
-            className="shrink-0 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium transition-colors"
+            className="shrink-0 px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium transition-colors"
           >
             Manage →
           </Link>
@@ -266,10 +266,10 @@ export default function DevicePage() {
           {endpoints.map(({ method, path, note }) => (
             <div key={path}>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] font-mono font-semibold text-cyan-500 uppercase tracking-wider w-9 shrink-0">
+                <span className="text-[10px] font-mono font-semibold text-emerald-600 uppercase tracking-wider w-9 shrink-0">
                   {method.trim()}
                 </span>
-                <span className="text-slate-500 text-xs">{note}</span>
+                <span className="text-gray-500 text-xs">{note}</span>
               </div>
               <CopyField
                 value={`${base}${path}`}
@@ -279,11 +279,11 @@ export default function DevicePage() {
           ))}
         </div>
 
-        <div className="mt-4 p-4 rounded-lg bg-slate-900/60 border border-slate-800 space-y-2">
-          <p className="text-xs text-slate-400 font-medium">Required on every request</p>
+        <div className="mt-4 p-4 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
+          <p className="text-xs text-gray-500 font-medium">Required on every request</p>
           <CopyField value="Authorization: Bearer <INGEST_TOKEN>" />
-          <p className="text-xs text-slate-600">
-            Set <span className="font-mono text-slate-500">INGEST_TOKEN</span> in your Vercel environment variables.
+          <p className="text-xs text-gray-400">
+            Set <span className="font-mono text-gray-500">INGEST_TOKEN</span> in your Vercel environment variables.
             Never shown here — copy it directly from the Vercel dashboard into your firmware.
           </p>
         </div>
@@ -295,26 +295,24 @@ export default function DevicePage() {
         <ol className="space-y-0">
           {SETUP_STEPS.map(({ n, title, body }, i) => (
             <li key={n} className="flex gap-4">
-              {/* Timeline spine */}
               <div className="flex flex-col items-center shrink-0">
-                <span className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-400">
+                <span className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-xs font-bold text-gray-500">
                   {n}
                 </span>
                 {i < SETUP_STEPS.length - 1 && (
-                  <span className="w-px flex-1 bg-slate-800 my-1" />
+                  <span className="w-px flex-1 bg-gray-200 my-1" />
                 )}
               </div>
-              {/* Content */}
               <div className={`pb-6 ${i === SETUP_STEPS.length - 1 ? 'pb-0' : ''}`}>
-                <p className={`font-medium text-sm mb-1 ${n === 6 ? 'text-slate-500' : 'text-slate-200'}`}>
+                <p className={`font-medium text-sm mb-1 ${n === 6 ? 'text-gray-400' : 'text-gray-900'}`}>
                   {title}
                   {n === 6 && (
-                    <span className="ml-2 text-[10px] font-normal text-slate-600 uppercase tracking-wider">
+                    <span className="ml-2 text-[10px] font-normal text-gray-400 uppercase tracking-wider">
                       planned
                     </span>
                   )}
                 </p>
-                <p className={`text-sm leading-relaxed ${n === 6 ? 'text-slate-600' : 'text-slate-500'}`}>
+                <p className={`text-sm leading-relaxed ${n === 6 ? 'text-gray-400' : 'text-gray-500'}`}>
                   {body}
                 </p>
               </div>

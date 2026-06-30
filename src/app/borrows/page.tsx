@@ -33,7 +33,7 @@ function fmtDate(iso: string): string {
 }
 
 const INPUT_CLS =
-  'bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-600'
+  'bg-white border border-gray-300 rounded px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-emerald-500'
 
 export default function BorrowsPage() {
   const [borrows, setBorrows] = useState<Borrow[]>([])
@@ -112,7 +112,7 @@ export default function BorrowsPage() {
   const returned = borrows.filter(b => b.returned_at)
 
   if (loading) {
-    return <div className="flex-1 flex items-center justify-center text-slate-500">Loading…</div>
+    return <div className="flex-1 flex items-center justify-center text-gray-400">Loading…</div>
   }
 
   return (
@@ -120,10 +120,10 @@ export default function BorrowsPage() {
 
       {/* ── New Borrow form ── */}
       <section>
-        <h2 className="text-lg font-semibold text-slate-200 mb-4">New Borrow</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">New Borrow</h2>
         <form onSubmit={handleBorrow} className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500 uppercase tracking-wider">Component</label>
+            <label className="text-xs text-gray-500 uppercase tracking-wider">Component</label>
             <select
               value={form.component}
               onChange={e => setForm(f => ({ ...f, component: e.target.value }))}
@@ -140,7 +140,7 @@ export default function BorrowsPage() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500 uppercase tracking-wider">Qty</label>
+            <label className="text-xs text-gray-500 uppercase tracking-wider">Qty</label>
             <input
               type="number"
               min={1}
@@ -152,7 +152,7 @@ export default function BorrowsPage() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500 uppercase tracking-wider">Borrower</label>
+            <label className="text-xs text-gray-500 uppercase tracking-wider">Borrower</label>
             <input
               type="text"
               placeholder="Name"
@@ -164,7 +164,7 @@ export default function BorrowsPage() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500 uppercase tracking-wider">Due</label>
+            <label className="text-xs text-gray-500 uppercase tracking-wider">Due</label>
             <input
               type="date"
               value={form.due_at}
@@ -177,36 +177,36 @@ export default function BorrowsPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="px-5 py-2 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+            className="px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
           >
             {submitting ? 'Borrowing…' : 'Borrow'}
           </button>
         </form>
-        {formError && <p className="mt-2 text-red-400 text-sm">{formError}</p>}
+        {formError && <p className="mt-2 text-red-600 text-sm">{formError}</p>}
       </section>
 
       {/* ── Open borrows ── */}
       <section>
-        <h2 className="text-lg font-semibold text-slate-200 mb-4">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
           Open Borrows{' '}
-          <span className="text-slate-500 font-normal text-base">({open.length})</span>
+          <span className="text-gray-400 font-normal text-base">({open.length})</span>
         </h2>
-        {returnError && <p className="mb-3 text-red-400 text-sm">{returnError}</p>}
-        <div className="overflow-x-auto rounded-lg border border-slate-800">
+        {returnError && <p className="mb-3 text-red-600 text-sm">{returnError}</p>}
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
           <table className="w-full text-sm">
-            <thead className="bg-slate-900 text-left">
+            <thead className="bg-gray-50 text-left">
               <tr>
                 {['Component', 'Qty', 'Borrower', 'Taken', 'Due', ''].map(h => (
-                  <th key={h} className="px-4 py-3 text-slate-400 font-medium">
+                  <th key={h} className="px-4 py-3 text-gray-500 font-medium">
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-gray-200">
               {open.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-600">
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                     No open borrows.
                   </td>
                 </tr>
@@ -214,17 +214,17 @@ export default function BorrowsPage() {
                 open.map(b => {
                   const overdue = isOverdue(b.due_at)
                   return (
-                    <tr key={b.id} className="hover:bg-slate-900/50">
-                      <td className="px-4 py-3 text-white font-mono">{b.component}</td>
-                      <td className="px-4 py-3 text-cyan-400 tabular-nums font-semibold">
+                    <tr key={b.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-gray-900 font-mono">{b.component}</td>
+                      <td className="px-4 py-3 text-emerald-600 tabular-nums font-semibold">
                         {b.qty}
                       </td>
-                      <td className="px-4 py-3 text-slate-300">{b.borrower}</td>
-                      <td className="px-4 py-3 text-slate-500 text-xs font-mono">
+                      <td className="px-4 py-3 text-gray-700">{b.borrower}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs font-mono">
                         {fmtDate(b.taken_at)}
                       </td>
                       <td className="px-4 py-3 text-xs font-mono">
-                        <span className={overdue ? 'text-red-400' : 'text-slate-400'}>
+                        <span className={overdue ? 'text-red-600' : 'text-gray-400'}>
                           {fmtDate(b.due_at)}
                           {overdue ? ' ⚠' : ''}
                         </span>
@@ -232,7 +232,7 @@ export default function BorrowsPage() {
                       <td className="px-4 py-3">
                         <button
                           onClick={() => handleReturn(b.id)}
-                          className="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium transition-colors"
+                          className="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium transition-colors"
                         >
                           Return
                         </button>
@@ -250,33 +250,33 @@ export default function BorrowsPage() {
       <section>
         <button
           onClick={() => setShowHistory(h => !h)}
-          className="flex items-center gap-2 text-slate-500 hover:text-slate-300 text-sm transition-colors"
+          className="flex items-center gap-2 text-gray-400 hover:text-gray-700 text-sm transition-colors"
         >
           <span>{showHistory ? '▼' : '▶'}</span>
           Returned history ({returned.length})
         </button>
         {showHistory && (
-          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-800">
+          <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200">
             <table className="w-full text-sm">
-              <thead className="bg-slate-900 text-left">
+              <thead className="bg-gray-50 text-left">
                 <tr>
                   {['Component', 'Qty', 'Borrower', 'Taken', 'Returned'].map(h => (
-                    <th key={h} className="px-4 py-3 text-slate-400 font-medium">
+                    <th key={h} className="px-4 py-3 text-gray-500 font-medium">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-gray-200">
                 {returned.map(b => (
                   <tr key={b.id} className="opacity-60 hover:opacity-80">
-                    <td className="px-4 py-3 text-slate-300 font-mono">{b.component}</td>
-                    <td className="px-4 py-3 text-slate-400 tabular-nums">{b.qty}</td>
-                    <td className="px-4 py-3 text-slate-400">{b.borrower}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs font-mono">
+                    <td className="px-4 py-3 text-gray-700 font-mono">{b.component}</td>
+                    <td className="px-4 py-3 text-gray-500 tabular-nums">{b.qty}</td>
+                    <td className="px-4 py-3 text-gray-500">{b.borrower}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs font-mono">
                       {fmtDate(b.taken_at)}
                     </td>
-                    <td className="px-4 py-3 text-slate-500 text-xs font-mono">
+                    <td className="px-4 py-3 text-gray-400 text-xs font-mono">
                       {fmtDate(b.returned_at!)}
                     </td>
                   </tr>

@@ -46,11 +46,11 @@ interface LedgerRow {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const REASON_CLS: Record<string, string> = {
-  baseline:     'text-slate-400',
-  sort_session: 'text-cyan-400',
-  borrow:       'text-amber-400',
-  return:       'text-green-400',
-  adjustment:   'text-purple-400',
+  baseline:     'text-gray-400',
+  sort_session: 'text-emerald-600',
+  borrow:       'text-amber-600',
+  return:       'text-green-600',
+  adjustment:   'text-purple-600',
 }
 
 function fmtDate(iso: string | null): string {
@@ -70,7 +70,7 @@ function fmtDateTime(iso: string | null): string {
 
 function SectionHeading({ children }: { children: ReactNode }) {
   return (
-    <h2 className="text-base font-semibold text-slate-200 mb-4 pb-2 border-b border-slate-800">
+    <h2 className="text-base font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
       {children}
     </h2>
   )
@@ -78,20 +78,20 @@ function SectionHeading({ children }: { children: ReactNode }) {
 
 function TableWrap({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-800">
+    <div className="overflow-x-auto rounded-lg border border-gray-200">
       <table className="w-full text-sm">{children}</table>
     </div>
   )
 }
 
 function Th({ children }: { children: ReactNode }) {
-  return <th className="px-4 py-3 text-slate-400 font-medium text-left">{children}</th>
+  return <th className="px-4 py-3 text-gray-500 font-medium text-left">{children}</th>
 }
 
 function EmptyRow({ cols, message }: { cols: number; message: string }) {
   return (
     <tr>
-      <td colSpan={cols} className="px-4 py-8 text-center text-slate-600">{message}</td>
+      <td colSpan={cols} className="px-4 py-8 text-center text-gray-400">{message}</td>
     </tr>
   )
 }
@@ -99,17 +99,16 @@ function EmptyRow({ cols, message }: { cols: number; message: string }) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
-  const [inventory,  setInventory]  = useState<InvRow[]>([])
+  const [inventory,    setInventory]    = useState<InvRow[]>([])
   const [discSessions, setDiscSessions] = useState<DiscrepancySession[]>([])
-  const [borrows,    setBorrows]    = useState<BorrowRow[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState<string | null>(null)
+  const [borrows,      setBorrows]      = useState<BorrowRow[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [error,        setError]        = useState<string | null>(null)
 
   const [selectedComponent, setSelectedComponent] = useState('')
-  const [ledger,       setLedger]       = useState<LedgerRow[]>([])
-  const [ledgerLoading, setLedgerLoading] = useState(false)
+  const [ledger,            setLedger]            = useState<LedgerRow[]>([])
+  const [ledgerLoading,     setLedgerLoading]     = useState(false)
 
-  // Load inventory, discrepancies, borrows once on mount
   useEffect(() => {
     async function load() {
       try {
@@ -145,13 +144,11 @@ export default function ReportsPage() {
         setInventory((invData ?? []) as unknown as InvRow[])
         setBorrows((borrowData ?? []) as unknown as BorrowRow[])
 
-        // Index sessions by id for O(1) lookup
         const sessById = new Map<number, string | null>(
           ((sessData ?? []) as { id: number; finished_at: string | null }[])
             .map(s => [s.id, s.finished_at])
         )
 
-        // Group discrepancy rows by session, preserving session_id DESC order
         const grouped = new Map<number, DiscrepancySession>()
         for (const r of (reconcData ?? []) as (DiscrepancyRow & { session_id: number })[]) {
           if (!grouped.has(r.session_id)) {
@@ -176,7 +173,6 @@ export default function ReportsPage() {
     load()
   }, [])
 
-  // Load ledger trail whenever the selected component changes
   const loadLedger = useCallback(async (component: string) => {
     if (!component) { setLedger([]); return }
     setLedgerLoading(true)
@@ -199,10 +195,10 @@ export default function ReportsPage() {
   useEffect(() => { loadLedger(selectedComponent) }, [selectedComponent, loadLedger])
 
   if (loading) {
-    return <div className="flex-1 flex items-center justify-center text-slate-500">Loading…</div>
+    return <div className="flex-1 flex items-center justify-center text-gray-400">Loading…</div>
   }
   if (error) {
-    return <div className="flex-1 p-8 text-red-400">{error}</div>
+    return <div className="flex-1 p-8 text-red-600">{error}</div>
   }
 
   return (
@@ -212,16 +208,16 @@ export default function ReportsPage() {
       <section>
         <SectionHeading>Current Inventory</SectionHeading>
         <TableWrap>
-          <thead className="bg-slate-900 text-left">
+          <thead className="bg-gray-50 text-left">
             <tr><Th>Component</Th><Th>Qty</Th></tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-gray-200">
             {inventory.length === 0
               ? <EmptyRow cols={2} message="No inventory yet." />
               : inventory.map(r => (
-                  <tr key={r.component} className="hover:bg-slate-900/50">
-                    <td className="px-4 py-3 font-mono text-white">{r.component}</td>
-                    <td className="px-4 py-3 tabular-nums font-semibold text-cyan-400">{r.qty}</td>
+                  <tr key={r.component} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-mono text-gray-900">{r.component}</td>
+                    <td className="px-4 py-3 tabular-nums font-semibold text-emerald-600">{r.qty}</td>
                   </tr>
                 ))
             }
@@ -233,28 +229,28 @@ export default function ReportsPage() {
       <section>
         <SectionHeading>Discrepancy Report</SectionHeading>
         {discSessions.length === 0 ? (
-          <p className="text-sm text-slate-600">No discrepancies recorded across any reconciled session.</p>
+          <p className="text-sm text-gray-400">No discrepancies recorded across any reconciled session.</p>
         ) : (
           <div className="space-y-6">
             {discSessions.map(s => (
               <div key={s.session_id}>
-                <p className="text-xs text-slate-500 mb-2 font-mono">
+                <p className="text-xs text-gray-400 mb-2 font-mono">
                   Session #{s.session_id} · finished {fmtDateTime(s.finished_at)}
                 </p>
                 <TableWrap>
-                  <thead className="bg-slate-900 text-left">
+                  <thead className="bg-gray-50 text-left">
                     <tr>
                       <Th>Component</Th><Th>Expected</Th><Th>Counted</Th><Th>Difference</Th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800">
+                  <tbody className="divide-y divide-gray-200">
                     {s.rows.map(r => (
-                      <tr key={r.component} className="hover:bg-slate-900/50">
-                        <td className="px-4 py-3 font-mono text-white">{r.component}</td>
-                        <td className="px-4 py-3 tabular-nums text-slate-300">{r.expected}</td>
-                        <td className="px-4 py-3 tabular-nums text-slate-300">{r.counted}</td>
+                      <tr key={r.component} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-mono text-gray-900">{r.component}</td>
+                        <td className="px-4 py-3 tabular-nums text-gray-700">{r.expected}</td>
+                        <td className="px-4 py-3 tabular-nums text-gray-700">{r.counted}</td>
                         <td className="px-4 py-3 tabular-nums font-semibold">
-                          <span className={r.difference > 0 ? 'text-cyan-400' : 'text-red-400'}>
+                          <span className={r.difference > 0 ? 'text-emerald-600' : 'text-red-600'}>
                             {r.difference > 0 ? '+' : ''}{r.difference}
                           </span>
                         </td>
@@ -272,13 +268,13 @@ export default function ReportsPage() {
       <section>
         <SectionHeading>Borrow History</SectionHeading>
         <TableWrap>
-          <thead className="bg-slate-900 text-left">
+          <thead className="bg-gray-50 text-left">
             <tr>
               <Th>Component</Th><Th>Qty</Th><Th>Borrower</Th>
               <Th>Taken</Th><Th>Due</Th><Th>Returned</Th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-gray-200">
             {borrows.length === 0
               ? <EmptyRow cols={6} message="No borrows yet." />
               : borrows.map(b => {
@@ -287,23 +283,23 @@ export default function ReportsPage() {
                   return (
                     <tr
                       key={b.id}
-                      className={`hover:bg-slate-900/50 ${outstanding ? '' : 'opacity-50'}`}
+                      className={`hover:bg-gray-50 ${outstanding ? '' : 'opacity-50'}`}
                     >
-                      <td className="px-4 py-3 font-mono text-white">{b.component}</td>
-                      <td className={`px-4 py-3 tabular-nums font-semibold ${outstanding ? 'text-amber-400' : 'text-slate-500'}`}>
+                      <td className="px-4 py-3 font-mono text-gray-900">{b.component}</td>
+                      <td className={`px-4 py-3 tabular-nums font-semibold ${outstanding ? 'text-amber-600' : 'text-gray-400'}`}>
                         {b.qty}
                       </td>
-                      <td className="px-4 py-3 text-slate-300">{b.borrower}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-slate-500">{fmtDate(b.taken_at)}</td>
+                      <td className="px-4 py-3 text-gray-700">{b.borrower}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-gray-400">{fmtDate(b.taken_at)}</td>
                       <td className="px-4 py-3 text-xs font-mono">
-                        <span className={overdue ? 'text-red-400' : 'text-slate-500'}>
+                        <span className={overdue ? 'text-red-600' : 'text-gray-400'}>
                           {fmtDate(b.due_at)}{overdue ? ' ⚠' : ''}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs font-mono">
                         {b.returned_at
-                          ? <span className="text-slate-500">{fmtDate(b.returned_at)}</span>
-                          : <span className="text-amber-400">Outstanding</span>}
+                          ? <span className="text-gray-400">{fmtDate(b.returned_at)}</span>
+                          : <span className="text-amber-600">Outstanding</span>}
                       </td>
                     </tr>
                   )
@@ -317,13 +313,13 @@ export default function ReportsPage() {
       <section>
         <SectionHeading>Ledger Trail</SectionHeading>
         <div className="mb-4 flex items-center gap-3">
-          <label className="text-xs text-slate-500 uppercase tracking-wider shrink-0">
+          <label className="text-xs text-gray-500 uppercase tracking-wider shrink-0">
             Component
           </label>
           <select
             value={selectedComponent}
             onChange={e => setSelectedComponent(e.target.value)}
-            className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-600 min-w-[180px]"
+            className="bg-white border border-gray-300 rounded px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-emerald-500 min-w-[180px]"
           >
             <option value="">Select…</option>
             {inventory.map(r => (
@@ -333,31 +329,31 @@ export default function ReportsPage() {
         </div>
 
         {!selectedComponent ? (
-          <p className="text-sm text-slate-600">Select a component above to trace its ledger history.</p>
+          <p className="text-sm text-gray-400">Select a component above to trace its ledger history.</p>
         ) : ledgerLoading ? (
-          <p className="text-sm text-slate-500">Loading…</p>
+          <p className="text-sm text-gray-400">Loading…</p>
         ) : (
           <TableWrap>
-            <thead className="bg-slate-900 text-left">
+            <thead className="bg-gray-50 text-left">
               <tr><Th>Date</Th><Th>Reason</Th><Th>Delta</Th><Th>Balance</Th></tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-gray-200">
               {ledger.length === 0
                 ? <EmptyRow cols={4} message="No ledger entries." />
                 : ledger.map(row => (
-                    <tr key={row.id} className="hover:bg-slate-900/50">
-                      <td className="px-4 py-3 text-xs font-mono text-slate-500">
+                    <tr key={row.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-xs font-mono text-gray-400">
                         {fmtDateTime(row.created_at)}
                       </td>
-                      <td className={`px-4 py-3 font-mono text-xs ${REASON_CLS[row.reason] ?? 'text-slate-400'}`}>
+                      <td className={`px-4 py-3 font-mono text-xs ${REASON_CLS[row.reason] ?? 'text-gray-400'}`}>
                         {row.reason}
                       </td>
                       <td className="px-4 py-3 tabular-nums font-semibold">
-                        <span className={row.delta >= 0 ? 'text-green-400' : 'text-red-400'}>
+                        <span className={row.delta >= 0 ? 'text-emerald-600' : 'text-red-600'}>
                           {row.delta >= 0 ? '+' : ''}{row.delta}
                         </span>
                       </td>
-                      <td className="px-4 py-3 tabular-nums text-slate-200 font-semibold">
+                      <td className="px-4 py-3 tabular-nums text-gray-900 font-semibold">
                         {row.running_balance}
                       </td>
                     </tr>

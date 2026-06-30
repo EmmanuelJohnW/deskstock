@@ -9,17 +9,16 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
-// Flat-top hexagon
 const HEX_CLIP = 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)'
 
 const ICON_RULES: Array<{ pattern: RegExp; icon: LucideIcon }> = [
-  { pattern: /Ω|ohm|resistor/i, icon: Minus },
-  { pattern: /[nµ]F|pF|capacitor/i, icon: Layers },
-  { pattern: /LED/i, icon: Lightbulb },
-  { pattern: /ATtiny|ATmega|ESP\d|PIC\d|MCU|Tiny\d|mega\d/i, icon: Cpu },
-  { pattern: /1N\d+|diode/i, icon: Zap },
-  { pattern: /[µm]H|inductor/i, icon: Radio },
-  { pattern: /HC-SR|sensor|module/i, icon: Radio },
+  { pattern: /Ω|ohm|resistor/i,                              icon: Minus     },
+  { pattern: /[nµ]F|pF|capacitor/i,                         icon: Layers    },
+  { pattern: /LED/i,                                         icon: Lightbulb },
+  { pattern: /ATtiny|ATmega|ESP\d|PIC\d|MCU|Tiny\d|mega\d/i, icon: Cpu      },
+  { pattern: /1N\d+|diode/i,                                 icon: Zap       },
+  { pattern: /[µm]H|inductor/i,                              icon: Radio     },
+  { pattern: /HC-SR|sensor|module/i,                         icon: Radio     },
 ]
 
 function resolveIcon(component: string): LucideIcon {
@@ -41,8 +40,8 @@ export function HexBin({ idx, component, count, isReject, isEmpty }: HexBinProps
   if (isEmpty) {
     return (
       <div
-        className="w-full h-full opacity-25"
-        style={{ clipPath: HEX_CLIP, background: '#1e293b' }}
+        className="w-full h-full opacity-60"
+        style={{ clipPath: HEX_CLIP, background: '#f3f4f6' }}
       />
     )
   }
@@ -50,13 +49,14 @@ export function HexBin({ idx, component, count, isReject, isEmpty }: HexBinProps
   const Icon = isReject ? Package : resolveIcon(component)
 
   const bg = isReject
-    ? 'linear-gradient(160deg, #450a0a 0%, #7f1d1d 100%)'
-    : 'linear-gradient(160deg, #0f172a 0%, #1e293b 100%)'
+    ? 'linear-gradient(160deg, #fff1f2 0%, #fecdd3 100%)'
+    : 'linear-gradient(160deg, #ecfdf5 0%, #d1fae5 100%)'
 
-  const iconColor = isReject ? '#f87171' : '#64748b'
-  const countColor = isReject ? '#fca5a5' : '#67e8f9'
-  const labelColor = '#475569'
-  const binLabel = isReject ? 'REJECT' : `BIN ${idx}`
+  const iconColor  = isReject ? '#e11d48' : '#059669'
+  const countColor = isReject ? '#e11d48' : '#059669'
+  const labelColor = '#9ca3af'
+  const binLabel   = isReject ? 'REJECT' : `BIN ${idx}`
+  const binLabelColor = isReject ? '#fda4af' : '#d1d5db'
 
   return (
     <div
@@ -89,7 +89,7 @@ export function HexBin({ idx, component, count, isReject, isEmpty }: HexBinProps
 
       <span
         className="font-mono"
-        style={{ fontSize: 8, color: isReject ? '#7f1d1d' : '#334155', marginTop: 1 }}
+        style={{ fontSize: 8, color: binLabelColor, marginTop: 1 }}
       >
         {binLabel}
       </span>

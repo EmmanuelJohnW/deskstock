@@ -6,14 +6,14 @@ import { getSupabaseClient } from '@/lib/supabase/client'
 interface ComponentRow {
   id: number
   name: string
-  weight_g: number   // numeric comes back as a parseable value; treated as number
+  weight_g: number
   created_at: string
 }
 
 const EMPTY_FORM = { name: '', weight_g: '' }
 
 const INPUT_CLS =
-  'bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-600'
+  'bg-white border border-gray-300 rounded px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-emerald-500'
 
 export default function ComponentsPage() {
   const [components, setComponents] = useState<ComponentRow[]>([])
@@ -99,7 +99,7 @@ export default function ComponentsPage() {
   }
 
   if (loading) {
-    return <div className="flex-1 flex items-center justify-center text-slate-500">Loading…</div>
+    return <div className="flex-1 flex items-center justify-center text-gray-400">Loading…</div>
   }
 
   return (
@@ -107,13 +107,13 @@ export default function ComponentsPage() {
 
       {/* ── Register / Edit form ── */}
       <section>
-        <h2 className="text-lg font-semibold text-slate-200 mb-4">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
           {editing ? `Edit "${editing.name}"` : 'Register Component'}
         </h2>
 
         <form onSubmit={handleSubmit} className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500 uppercase tracking-wider">Name</label>
+            <label className="text-xs text-gray-500 uppercase tracking-wider">Name</label>
             <input
               type="text"
               value={form.name}
@@ -125,7 +125,7 @@ export default function ComponentsPage() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-500 uppercase tracking-wider">Weight (g)</label>
+            <label className="text-xs text-gray-500 uppercase tracking-wider">Weight (g)</label>
             <input
               type="number"
               step="0.001"
@@ -142,7 +142,7 @@ export default function ComponentsPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="px-5 py-2 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+              className="px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
             >
               {submitting ? 'Saving…' : editing ? 'Update' : 'Register'}
             </button>
@@ -150,7 +150,7 @@ export default function ComponentsPage() {
               <button
                 type="button"
                 onClick={cancelEdit}
-                className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-white text-sm transition-colors"
+                className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm transition-colors"
               >
                 Cancel
               </button>
@@ -158,30 +158,30 @@ export default function ComponentsPage() {
           </div>
         </form>
 
-        {formError && <p className="mt-2 text-red-400 text-sm">{formError}</p>}
+        {formError && <p className="mt-2 text-red-600 text-sm">{formError}</p>}
       </section>
 
       {/* ── Component list ── */}
       <section>
-        <h2 className="text-lg font-semibold text-slate-200 mb-4">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
           Registered Components{' '}
-          <span className="text-slate-500 font-normal text-base">({components.length})</span>
+          <span className="text-gray-400 font-normal text-base">({components.length})</span>
         </h2>
-        {deleteError && <p className="mb-3 text-red-400 text-sm">{deleteError}</p>}
+        {deleteError && <p className="mb-3 text-red-600 text-sm">{deleteError}</p>}
 
-        <div className="overflow-x-auto rounded-lg border border-slate-800">
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
           <table className="w-full text-sm">
-            <thead className="bg-slate-900 text-left">
+            <thead className="bg-gray-50 text-left">
               <tr>
                 {['Name', 'Weight (g)', ''].map(h => (
-                  <th key={h} className="px-4 py-3 text-slate-400 font-medium">{h}</th>
+                  <th key={h} className="px-4 py-3 text-gray-500 font-medium">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-gray-200">
               {components.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-slate-600">
+                  <td colSpan={3} className="px-4 py-8 text-center text-gray-400">
                     No components registered yet.
                   </td>
                 </tr>
@@ -189,23 +189,23 @@ export default function ComponentsPage() {
                 components.map(c => (
                   <tr
                     key={c.id}
-                    className={`hover:bg-slate-900/50 ${editing?.id === c.id ? 'bg-slate-900/80' : ''}`}
+                    className={`hover:bg-gray-50 ${editing?.id === c.id ? 'bg-emerald-50' : ''}`}
                   >
-                    <td className="px-4 py-3 text-white font-mono">{c.name}</td>
-                    <td className="px-4 py-3 tabular-nums text-slate-300 font-mono">
+                    <td className="px-4 py-3 text-gray-900 font-mono">{c.name}</td>
+                    <td className="px-4 py-3 tabular-nums text-gray-700 font-mono">
                       {Number(c.weight_g).toFixed(3)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button
                           onClick={() => startEdit(c)}
-                          className="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium transition-colors"
+                          className="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium transition-colors"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => handleDelete(c)}
-                          className="px-3 py-1 rounded bg-red-900/40 hover:bg-red-800/60 text-red-400 text-xs font-medium transition-colors"
+                          className="px-3 py-1 rounded bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium transition-colors"
                         >
                           Delete
                         </button>

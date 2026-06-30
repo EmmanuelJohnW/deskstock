@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useDevice } from '@/lib/device/useDevice'
-import { RadialHexMap } from '@/components/RadialHexMap'
+import { ArchBinMap } from '@/components/ArchBinMap'
 import { StatusBar } from '@/components/StatusBar'
 import { TelemetryBar } from '@/components/TelemetryBar'
 import { BinCountControl } from '@/components/BinCountControl'
@@ -39,7 +39,7 @@ export default function DashboardPage() {
       <main className="flex-1 flex flex-col items-center justify-center gap-5 p-6">
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-semibold text-gray-700 tracking-tight">
-            Radial Sort
+            Arch Sort
           </h1>
           <BinCountControl
             value={binCount}
@@ -48,14 +48,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        <RadialHexMap
-          bins={device.bins}
-          binCount={binCount}
-          runStatus={device.runStatus}
-          elapsedMs={device.elapsedMs}
-          estRemainingMs={device.estRemainingMs}
-          liveSorted={liveSorted}
-        />
+        <ArchBinMap bins={device.bins} binCount={binCount} />
 
         {device.controllable && (
           <div className="flex gap-3">

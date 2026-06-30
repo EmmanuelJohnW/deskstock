@@ -3,10 +3,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { DeviceLogTerminal } from '@/components/DeviceLogTerminal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type StatusKind = 'sorting' | 'recent' | 'stale' | 'never'
+// 'sorting' takes priority when a run is live. Otherwise online/offline is
+// derived from how recently the device made any logged API call — this is
+// the device's actual heartbeat, not a guess based on run history.
+type StatusKind = 'sorting' | 'online' | 'offline'
+
+const ONLINE_THRESHOLD_MS = 60_000
 
 interface DeviceStatus {
   kind: StatusKind
@@ -32,14 +38,14 @@ async function fetchStatus(): Promise<DeviceStatus> {
 
   const [
     { data: liveRows },
-    { data: lastRun },
+    { data: lastLog },
     { count },
   ] = await Promise.all([
     supabase.from('live_runs').select('run_id').limit(1),
     supabase
-      .from('runs')
-      .select('started_at, duration_ms')
-      .order('started_at', { ascending: false })
+      .from('device_log')
+      .select('created_at')
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
     supabase.from('components').select('*', { count: 'exact', head: true }),
@@ -47,21 +53,15 @@ async function fetchStatus(): Promise<DeviceStatus> {
 
   const liveRunId = (liveRows?.[0] as { run_id: string } | undefined)?.run_id ?? null
 
-  let lastSeenMs: number | null = null
-  if (lastRun) {
-    const row = lastRun as { started_at: string; duration_ms: number }
-    lastSeenMs = new Date(row.started_at).getTime() + row.duration_ms
-  }
+  const lastSeenMs = lastLog ? new Date((lastLog as { created_at: string }).created_at).getTime() : null
 
   let kind: StatusKind
   if (liveRunId) {
     kind = 'sorting'
-  } else if (lastSeenMs === null) {
-    kind = 'never'
-  } else if (Date.now() - lastSeenMs < 2 * 60 * 60 * 1000) {
-    kind = 'recent'
+  } else if (lastSeenMs !== null && Date.now() - lastSeenMs < ONLINE_THRESHOLD_MS) {
+    kind = 'online'
   } else {
-    kind = 'stale'
+    kind = 'offline'
   }
 
   return { kind, liveRunId, lastSeenMs, componentCount: count ?? 0 }
@@ -106,20 +106,15 @@ function StatusBadge({ status }: { status: DeviceStatus }) {
       label: 'Sorting now',
       sub: `Run ${status.liveRunId ?? ''}`,
     },
-    recent: {
+    online: {
       dot: 'bg-emerald-500',
       label: 'Online',
-      sub: status.lastSeenMs ? `Last run completed ${timeAgo(status.lastSeenMs)}` : '',
+      sub: status.lastSeenMs ? `Last call ${timeAgo(status.lastSeenMs)}` : '',
     },
-    stale: {
-      dot: 'bg-amber-400',
-      label: 'Idle',
-      sub: status.lastSeenMs ? `Last seen ${timeAgo(status.lastSeenMs)}` : '',
-    },
-    never: {
+    offline: {
       dot: 'bg-gray-300',
-      label: 'Never seen',
-      sub: 'No ingest traffic recorded yet',
+      label: 'Offline',
+      sub: status.lastSeenMs ? `Last call ${timeAgo(status.lastSeenMs)}` : 'No API traffic recorded yet',
     },
   }
 
@@ -176,8 +171,8 @@ const SETUP_STEPS = [
   },
   {
     n: 6,
-    title: 'Poll for commands (planned)',
-    body: 'GET /api/commands every ~500 ms to receive Start/Stop signals from the dashboard. Not yet implemented — the endpoint will return {command: "start" | "stop" | null}.',
+    title: 'Poll for commands',
+    body: 'GET /api/commands every ~500 ms to receive Start/Stop signals from the dashboard. The endpoint is live but always returns {command: null} for now — dispatch from the dashboard buttons isn\'t wired yet.',
   },
 ]
 
@@ -207,7 +202,7 @@ export default function DevicePage() {
   const endpoints = [
     { method: 'GET ', path: '/api/run-config', note: 'Fetch weight table at run start' },
     { method: 'POST', path: '/api/ingest',     note: 'Report bin counts (running + complete)' },
-    { method: 'GET ', path: '/api/commands',   note: 'Poll for start/stop signals [planned]' },
+    { method: 'GET ', path: '/api/commands',   note: 'Poll for start/stop signals (always null for now)' },
   ]
 
   return (
@@ -234,6 +229,12 @@ export default function DevicePage() {
             Checking…
           </div>
         )}
+      </section>
+
+      {/* ── Live communication terminal ── */}
+      <section>
+        <SectionLabel>Device traffic</SectionLabel>
+        <DeviceLogTerminal />
       </section>
 
       {/* ── Component registry ── */}
@@ -271,10 +272,7 @@ export default function DevicePage() {
                 </span>
                 <span className="text-gray-500 text-xs">{note}</span>
               </div>
-              <CopyField
-                value={`${base}${path}`}
-                dim={path === '/api/commands'}
-              />
+              <CopyField value={`${base}${path}`} />
             </div>
           ))}
         </div>
@@ -304,17 +302,8 @@ export default function DevicePage() {
                 )}
               </div>
               <div className={`pb-6 ${i === SETUP_STEPS.length - 1 ? 'pb-0' : ''}`}>
-                <p className={`font-medium text-sm mb-1 ${n === 6 ? 'text-gray-400' : 'text-gray-900'}`}>
-                  {title}
-                  {n === 6 && (
-                    <span className="ml-2 text-[10px] font-normal text-gray-400 uppercase tracking-wider">
-                      planned
-                    </span>
-                  )}
-                </p>
-                <p className={`text-sm leading-relaxed ${n === 6 ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {body}
-                </p>
+                <p className="font-medium text-sm mb-1 text-gray-900">{title}</p>
+                <p className="text-sm leading-relaxed text-gray-500">{body}</p>
               </div>
             </li>
           ))}

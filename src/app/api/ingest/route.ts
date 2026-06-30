@@ -2,6 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
+import { logDeviceCall } from '@/lib/deviceLog'
 
 // ─── Prerequisites — run in Supabase SQL editor before deploying ──────────────
 //
@@ -65,28 +66,45 @@ const CompleteBody = z.object({
 
 const IngestSchema = z.discriminatedUnion('status', [RunningBody, CompleteBody])
 
-function unauthorized() {
-  return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+type Bin = z.infer<typeof BinSchema>
+
+function summarizeBins(bins: Bin[]): string {
+  if (bins.length === 0) return 'no bins'
+  const top = bins.reduce((a, b) => (b.count > a.count ? b : a))
+  return `${top.name} x${top.count} bin${top.bin}`
+}
+
+async function respond(
+  supabase: ReturnType<typeof getServerClient>,
+  status: number,
+  body: Record<string, unknown>,
+  summary: string,
+): Promise<NextResponse> {
+  await logDeviceCall(supabase, { method: 'POST', endpoint: '/api/ingest', statusCode: status, summary })
+  return NextResponse.json(body, { status })
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = getServerClient()
+
   const token = req.headers.get('authorization')?.replace('Bearer ', '')
-  if (!token || token !== process.env.INGEST_TOKEN) return unauthorized()
+  if (!token || token !== process.env.INGEST_TOKEN) {
+    return respond(supabase, 401, { success: false, error: 'Unauthorized' }, 'unauthorized')
+  }
 
   let body: unknown
   try {
     body = await req.json()
   } catch {
-    return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 })
+    return respond(supabase, 400, { success: false, error: 'Invalid JSON' }, 'invalid json')
   }
 
   const parsed = IngestSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 })
+    return respond(supabase, 422, { success: false, error: parsed.error.flatten() }, 'validation failed')
   }
 
   const data = parsed.data
-  const supabase = getServerClient()
 
   // ── running: keep the live view current ───────────────────────────────────
   if (data.status === 'running') {
@@ -103,9 +121,9 @@ export async function POST(req: NextRequest) {
     )
     if (error) {
       console.error('[POST /api/ingest] upsert live_runs failed:', error.message)
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+      return respond(supabase, 500, { success: false, error: error.message }, 'upsert live_runs failed')
     }
-    return NextResponse.json({ success: true })
+    return respond(supabase, 200, { success: true }, summarizeBins(data.bins))
   }
 
   // ── complete ───────────────────────────────────────────────────────────────
@@ -118,7 +136,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (existing) {
-    return NextResponse.json({ success: true })
+    return respond(supabase, 200, { success: true }, 'duplicate run_id')
   }
 
   // Every cycle must belong to an open counting session.
@@ -132,11 +150,11 @@ export async function POST(req: NextRequest) {
 
   if (sessionError) {
     console.error('[POST /api/ingest] session lookup failed:', sessionError.message)
-    return NextResponse.json({ success: false, error: sessionError.message }, { status: 500 })
+    return respond(supabase, 500, { success: false, error: sessionError.message }, 'session lookup failed')
   }
 
   if (!session) {
-    return NextResponse.json({ success: false, error: 'no_open_session' }, { status: 409 })
+    return respond(supabase, 409, { success: false, error: 'no_open_session' }, 'no open session')
   }
 
   // Record the cycle run for audit history.
@@ -152,7 +170,7 @@ export async function POST(req: NextRequest) {
   })
   if (runError) {
     console.error('[POST /api/ingest] insert run failed:', runError.message)
-    return NextResponse.json({ success: false, error: runError.message }, { status: 500 })
+    return respond(supabase, 500, { success: false, error: runError.message }, 'insert run failed')
   }
 
   // Record individual bin snapshots — bin↔component mapping is cycle-local only.
@@ -166,7 +184,7 @@ export async function POST(req: NextRequest) {
   )
   if (binsError) {
     console.error('[POST /api/ingest] insert bins failed:', binsError.message)
-    return NextResponse.json({ success: false, error: binsError.message }, { status: 500 })
+    return respond(supabase, 500, { success: false, error: binsError.message }, 'insert bins failed')
   }
 
   // Roll up this cycle's counts by component name into the session tally.
@@ -190,7 +208,7 @@ export async function POST(req: NextRequest) {
     })
     if (tallyError) {
       console.error('[POST /api/ingest] add_to_session_tally failed:', tallyError.message)
-      return NextResponse.json({ success: false, error: tallyError.message }, { status: 500 })
+      return respond(supabase, 500, { success: false, error: tallyError.message }, 'tally failed')
     }
   }
 
@@ -204,5 +222,5 @@ export async function POST(req: NextRequest) {
     console.error('[POST /api/ingest] delete live_runs failed:', delError.message)
   }
 
-  return NextResponse.json({ success: true }, { status: 201 })
+  return respond(supabase, 201, { success: true }, `complete ${summarizeBins(data.bins)}`)
 }

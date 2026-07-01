@@ -13,7 +13,7 @@ interface TelemetryBarProps {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-0.5 min-w-[80px]">
+    <div className="flex flex-col gap-0.5 min-w-[64px] sm:min-w-[80px]">
       <span className="text-[9px] text-gray-400 uppercase tracking-widest font-medium">
         {label}
       </span>
@@ -33,7 +33,7 @@ export function TelemetryBar({ elapsedMs, estRemainingMs, liveSorted, runStatus 
   const isActive = runStatus !== 'idle'
 
   return (
-    <div className="flex gap-8 px-6 py-3 bg-gray-50 border-b border-gray-200">
+    <div className="flex flex-wrap gap-4 sm:gap-8 px-4 sm:px-6 py-2.5 sm:py-3 bg-gray-50 border-b border-gray-200">
       <Stat label="Elapsed"   value={isActive ? fmtMs(elapsedMs) : '—'} />
       <Stat
         label="Remaining"

@@ -15,10 +15,10 @@ interface StatusBarProps {
 
 export function StatusBar({ online, rssi, fw, profile, runId }: StatusBarProps) {
   return (
-    <header className="flex items-center gap-4 px-5 py-3 bg-white/90 border-b border-gray-200 backdrop-blur text-sm">
+    <header className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 sm:px-5 py-2.5 sm:py-3 bg-white/90 border-b border-gray-200 backdrop-blur text-sm">
       <div className="flex items-center gap-2">
         <span
-          className="w-2 h-2 rounded-full transition-colors duration-500"
+          className="w-2 h-2 rounded-full transition-colors duration-500 shrink-0"
           style={{ background: online ? '#059669' : '#ef4444' }}
         />
         <span className={online ? 'text-gray-900' : 'text-gray-400'}>
@@ -27,23 +27,23 @@ export function StatusBar({ online, rssi, fw, profile, runId }: StatusBarProps) 
       </div>
 
       {rssi != null && (
-        <span className="text-gray-400 text-xs">
+        <span className="hidden sm:inline text-gray-400 text-xs">
           {rssi} dBm · {rssiQuality(rssi)}
         </span>
       )}
 
       {fw != null && (
-        <span className="text-gray-400 text-xs font-mono">fw {fw}</span>
+        <span className="hidden sm:inline text-gray-400 text-xs font-mono">fw {fw}</span>
       )}
 
-      <div className="flex-1" />
+      <div className="hidden sm:block flex-1" />
 
       {profile != null && (
-        <span className="text-emerald-600 font-medium">{profile}</span>
+        <span className="text-emerald-600 font-medium truncate max-w-full">{profile}</span>
       )}
 
       {runId != null && (
-        <span className="text-gray-400 font-mono text-xs">{runId}</span>
+        <span className="text-gray-400 font-mono text-xs truncate max-w-full">{runId}</span>
       )}
     </header>
   )

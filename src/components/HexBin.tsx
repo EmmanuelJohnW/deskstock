@@ -60,11 +60,18 @@ export function HexBin({ idx, component, count, isReject, isEmpty }: HexBinProps
         border: isEmpty ? '1px solid #c4c9d2' : 'none',
       }}
     >
-      <Icon style={{ color: accentColor, width: 15, height: 15, flexShrink: 0 }} />
+      <Icon
+        style={{
+          color: accentColor,
+          width: 'clamp(9px, 2cqw, 15px)',
+          height: 'clamp(9px, 2cqw, 15px)',
+          flexShrink: 0,
+        }}
+      />
 
       <span
         className="font-mono font-bold tabular-nums leading-none mt-1"
-        style={{ fontSize: 22, color: accentColor }}
+        style={{ fontSize: 'clamp(12px, 2.9cqw, 22px)', color: accentColor }}
       >
         {count}
       </span>
@@ -72,7 +79,7 @@ export function HexBin({ idx, component, count, isReject, isEmpty }: HexBinProps
       <span
         className="text-center leading-tight"
         style={{
-          fontSize: 9,
+          fontSize: 'clamp(7px, 1.2cqw, 9px)',
           color: labelColor,
           padding: '0 22%',
           width: '100%',
@@ -86,7 +93,7 @@ export function HexBin({ idx, component, count, isReject, isEmpty }: HexBinProps
 
       <span
         className="font-mono"
-        style={{ fontSize: 8, color: binLabelColor, marginTop: 1 }}
+        style={{ fontSize: 'clamp(6px, 1.05cqw, 8px)', color: binLabelColor, marginTop: 1 }}
       >
         {binLabel}
       </span>

@@ -36,8 +36,8 @@ export default function DashboardPage() {
         runStatus={device.runStatus}
       />
 
-      <main className="flex-1 flex flex-col items-center justify-center gap-5 p-6">
-        <div className="flex items-center gap-4">
+      <main className="flex-1 flex flex-col items-center justify-center gap-5 p-4 sm:p-6 w-full">
+        <div className="flex flex-wrap items-center justify-center gap-4">
           <h1 className="text-lg font-semibold text-gray-700 tracking-tight">
             Arch Sort
           </h1>

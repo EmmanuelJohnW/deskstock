@@ -45,6 +45,8 @@ export function ArchBinMap({ bins, binCount }: ArchBinMapProps) {
   const order = buildArchOrder(binCount)
   const stepDeg = order.length > 1 ? 180 / (order.length - 1) : 0
 
+  // Positions/sizes are expressed as % of the container (not px) so the whole
+  // arch scales with its box — see the wrapper's aspect-ratio + @container below.
   const points = order.map(({ binIdx, isReject }, slot) => {
     const deg = 180 - slot * stepDeg
     const rad = (deg * Math.PI) / 180
@@ -52,16 +54,25 @@ export function ArchBinMap({ bins, binCount }: ArchBinMapProps) {
     const y = ARC_CENTER_Y - ARC_RADIUS * Math.sin(rad)
     const bin = bins[binIdx] ?? null
     const isEmpty = !bin && !isReject
-    return { x, y, binIdx, isReject, isEmpty, bin }
+    return { leftPct: (x / CONTAINER_W) * 100, topPct: (y / CONTAINER_H) * 100, binIdx, isReject, isEmpty, bin }
   })
 
   const archPath = points.length > 0
     ? `M ${ARC_CENTER_X - ARC_RADIUS} ${ARC_CENTER_Y} A ${ARC_RADIUS} ${ARC_RADIUS} 0 0 1 ${ARC_CENTER_X + ARC_RADIUS} ${ARC_CENTER_Y}`
     : ''
 
+  const hexWidthPct = (HEX_W / CONTAINER_W) * 100
+  const hexHeightPct = (HEX_H / CONTAINER_H) * 100
+
   return (
-    <div className="relative mx-auto" style={{ width: CONTAINER_W, height: CONTAINER_H }}>
-      <svg className="absolute inset-0 pointer-events-none" width={CONTAINER_W} height={CONTAINER_H}>
+    <div
+      className="@container relative mx-auto w-full"
+      style={{ maxWidth: CONTAINER_W, aspectRatio: `${CONTAINER_W} / ${CONTAINER_H}` }}
+    >
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        viewBox={`0 0 ${CONTAINER_W} ${CONTAINER_H}`}
+      >
         <path
           d={archPath}
           fill="none"
@@ -71,11 +82,17 @@ export function ArchBinMap({ bins, binCount }: ArchBinMapProps) {
         />
       </svg>
 
-      {points.map(({ x, y, binIdx, isReject, isEmpty, bin }, slot) => (
+      {points.map(({ leftPct, topPct, binIdx, isReject, isEmpty, bin }, slot) => (
         <div
           key={slot}
           className="absolute"
-          style={{ left: x - HEX_W / 2, top: y - HEX_H / 2, width: HEX_W, height: HEX_H }}
+          style={{
+            left: `${leftPct}%`,
+            top: `${topPct}%`,
+            width: `${hexWidthPct}%`,
+            height: `${hexHeightPct}%`,
+            transform: 'translate(-50%, -50%)',
+          }}
         >
           <HexBin
             idx={binIdx}

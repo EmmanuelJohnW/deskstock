@@ -9,7 +9,7 @@ interface BinCountControlProps {
 
 export function BinCountControl({ value, onChange, disabled }: BinCountControlProps) {
   const btnBase =
-    'w-7 h-7 rounded flex items-center justify-center bg-gray-100 text-gray-900 font-bold text-base transition-colors'
+    'w-9 h-9 sm:w-7 sm:h-7 rounded flex items-center justify-center bg-gray-100 text-gray-900 font-bold text-base transition-colors'
   const btnEnabled  = 'hover:bg-gray-200 active:bg-gray-300'
   const btnDisabled = 'opacity-40 cursor-not-allowed'
 

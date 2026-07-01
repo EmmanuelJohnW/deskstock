@@ -19,6 +19,12 @@ export default function DashboardPage() {
       ? Math.max(device.totalSorted ?? 0, binSum)
       : binSum
 
+  const heading = isRunning
+    ? device.lastBinEvent
+      ? `Sorting: ${device.lastBinEvent.component}`
+      : `Sorting… (${liveSorted} sorted)`
+    : 'Sort'
+
   return (
     <div className="flex-1 flex flex-col bg-gray-50 text-gray-900">
       <StatusBar
@@ -36,10 +42,10 @@ export default function DashboardPage() {
         runStatus={device.runStatus}
       />
 
-      <main className="flex-1 flex flex-col items-center justify-center gap-5 p-4 sm:p-6 w-full">
+      <main className="flex-1 flex flex-col items-center justify-center gap-8 p-4 sm:p-6 w-full">
         <div className="flex flex-wrap items-center justify-center gap-4">
           <h1 className="text-lg font-semibold text-gray-700 tracking-tight">
-            Arch Sort
+            {heading}
           </h1>
           <BinCountControl
             value={binCount}
@@ -48,7 +54,12 @@ export default function DashboardPage() {
           />
         </div>
 
-        <ArchBinMap bins={device.bins} binCount={binCount} />
+        <ArchBinMap
+          bins={device.bins}
+          binCount={binCount}
+          activeBinIdx={isRunning ? device.lastBinEvent?.binIdx ?? null : null}
+          activeSeq={device.lastBinEvent?.seq}
+        />
 
         {device.controllable && (
           <div className="flex gap-3">

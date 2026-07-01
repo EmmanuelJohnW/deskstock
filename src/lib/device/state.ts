@@ -4,6 +4,12 @@ export interface BinState {
   count: number
 }
 
+export interface LastBinEvent {
+  binIdx: number
+  component: string
+  seq: number
+}
+
 export interface DeviceState {
   online: boolean
   rssi: number | null
@@ -16,6 +22,7 @@ export interface DeviceState {
   runStatus: 'idle' | 'running' | 'complete'
   totalSorted: number | null
   durationMs: number | null
+  lastBinEvent: LastBinEvent | null
 }
 
 export const INITIAL_DEVICE_STATE: DeviceState = {
@@ -30,4 +37,5 @@ export const INITIAL_DEVICE_STATE: DeviceState = {
   runStatus: 'idle',
   totalSorted: null,
   durationMs: null,
+  lastBinEvent: null,
 }

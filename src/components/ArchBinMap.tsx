@@ -1,14 +1,14 @@
 import type { BinState } from '@/lib/device/state'
 import { HexBin } from './HexBin'
 
-const CONTAINER_W = 760
-const CONTAINER_H = 300
+const CONTAINER_W = 1080
+const CONTAINER_H = 420
 
 const ARC_CENTER_X = CONTAINER_W / 2
-const ARC_CENTER_Y = 260
-const ARC_RADIUS   = 230
+const ARC_CENTER_Y = 364
+const ARC_RADIUS   = 322
 
-const HEX_W = 96
+const HEX_W = 136
 const HEX_H = Math.round(HEX_W * 0.866)
 
 interface Slot {
@@ -39,9 +39,11 @@ function buildArchOrder(binCount: number): Slot[] {
 interface ArchBinMapProps {
   bins: BinState[]
   binCount: number
+  activeBinIdx?: number | null
+  activeSeq?: number
 }
 
-export function ArchBinMap({ bins, binCount }: ArchBinMapProps) {
+export function ArchBinMap({ bins, binCount, activeBinIdx = null, activeSeq = 0 }: ArchBinMapProps) {
   const order = buildArchOrder(binCount)
   const stepDeg = order.length > 1 ? 180 / (order.length - 1) : 0
 
@@ -82,27 +84,35 @@ export function ArchBinMap({ bins, binCount }: ArchBinMapProps) {
         />
       </svg>
 
-      {points.map(({ leftPct, topPct, binIdx, isReject, isEmpty, bin }, slot) => (
-        <div
-          key={slot}
-          className="absolute"
-          style={{
-            left: `${leftPct}%`,
-            top: `${topPct}%`,
-            width: `${hexWidthPct}%`,
-            height: `${hexHeightPct}%`,
-            transform: 'translate(-50%, -50%)',
-          }}
-        >
-          <HexBin
-            idx={binIdx}
-            component={bin?.component ?? (isReject ? 'Unknown' : '')}
-            count={bin?.count ?? 0}
-            isReject={isReject}
-            isEmpty={isEmpty}
-          />
-        </div>
-      ))}
+      {points.map(({ leftPct, topPct, binIdx, isReject, isEmpty, bin }, slot) => {
+        const isPulsing = activeBinIdx === binIdx
+        return (
+          <div
+            key={slot}
+            className="absolute"
+            style={{
+              left: `${leftPct}%`,
+              top: `${topPct}%`,
+              width: `${hexWidthPct}%`,
+              height: `${hexHeightPct}%`,
+              transform: 'translate(-50%, -50%)',
+            }}
+          >
+            <div
+              key={isPulsing ? `pulse-${activeSeq}` : 'idle'}
+              className={isPulsing ? 'w-full h-full animate-bin-pulse' : 'w-full h-full'}
+            >
+              <HexBin
+                idx={binIdx}
+                component={bin?.component ?? (isReject ? 'Unknown' : '')}
+                count={bin?.count ?? 0}
+                isReject={isReject}
+                isEmpty={isEmpty}
+              />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

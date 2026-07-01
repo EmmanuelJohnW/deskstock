@@ -32,6 +32,7 @@ function reduce(state: DeviceState, msg: DeviceMessage): DeviceState {
         runStatus: 'running',
         totalSorted: null,
         durationMs: null,
+        lastBinEvent: null,
       }
     }
 
@@ -42,7 +43,15 @@ function reduce(state: DeviceState, msg: DeviceMessage): DeviceState {
           ? { ...b, count: b.count + msg.payload.count }
           : b
       )
-      return { ...state, bins }
+      return {
+        ...state,
+        bins,
+        lastBinEvent: {
+          binIdx: msg.payload.bin,
+          component: msg.payload.component,
+          seq: (state.lastBinEvent?.seq ?? 0) + 1,
+        },
+      }
     }
 
     case 'sort/progress':

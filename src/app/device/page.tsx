@@ -167,7 +167,7 @@ const SETUP_STEPS = [
   {
     n: 3,
     title: 'Sort locally',
-    body: 'Weigh each component. Walk the table: find the closest weight match within tolerance. No match → bin 6 (reject chute). All matching is on-device; no round-trip per part.',
+    body: 'Weigh each component. Walk the table: find the closest weight match within tolerance. No match → bin 0 (reject chute). All matching is on-device; no round-trip per part.',
   },
   {
     n: 4,
@@ -258,7 +258,7 @@ export default function DevicePage() {
             <p className="text-gray-500 text-sm mt-0.5">
               {status?.componentCount === 0
                 ? 'Register at least one component before the first run.'
-                : 'Bins 0–5 assigned dynamically; bin 6 is the reject chute.'}
+                : 'Bins 1–5 assigned dynamically; bin 0 is the reject chute.'}
             </p>
           </div>
           <Link

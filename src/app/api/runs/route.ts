@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
+import { REJECT_BIN_IDX } from '@/lib/device/binLayout'
 
 // ─── persist_run — run this in the Supabase SQL editor ────────────────────────
 //
@@ -85,9 +86,8 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Bin with the highest idx is the reject/unknown chute — excluded from inventory
-  const rejectIdx = Math.max(...bins.map(b => b.idx))
-  const binsWithRejectFlag = bins.map(b => ({ ...b, is_reject: b.idx === rejectIdx }))
+  // Bin 0 is always the reject/unknown chute — excluded from inventory
+  const binsWithRejectFlag = bins.map(b => ({ ...b, is_reject: b.idx === REJECT_BIN_IDX }))
 
   const supabase = getServerClient()
 

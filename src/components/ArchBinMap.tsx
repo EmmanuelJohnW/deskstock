@@ -1,19 +1,16 @@
 import type { BinState } from '@/lib/device/state'
+import { BIN_COUNT, REJECT_BIN_IDX } from '@/lib/device/binLayout'
 import { HexBin } from './HexBin'
 
-const CONTAINER_W = 1080
-const CONTAINER_H = 420
+const CONTAINER_W = 900
+const CONTAINER_H = 520
 
 const ARC_CENTER_X = CONTAINER_W / 2
-const ARC_CENTER_Y = 364
-const ARC_RADIUS   = 322
+const ARC_CENTER_Y = 430
+const ARC_RADIUS   = 300
 
-const HEX_W = 136
+const HEX_W = 172
 const HEX_H = Math.round(HEX_W * 0.866)
-
-// Fixed by firmware: bins 0-5 are known components, bin 6 is always the
-// reject/unknown chute. Not configurable from the dashboard.
-const BIN_COUNT = 7
 
 interface Slot {
   binIdx: number
@@ -21,22 +18,14 @@ interface Slot {
 }
 
 /**
- * Splits known bins (0-5) into left/right halves around the reject bin (6),
- * which always lands in the center slot: [0,1,2, REJECT(6), 3,4,5]
+ * Reject bin sits at the far left, known bins follow left-to-right:
+ * [REJECT(0), 1, 2, 3, 4, 5]
  */
 function buildArchOrder(): Slot[] {
-  const rejectIdx = BIN_COUNT - 1
-  const knownCount = BIN_COUNT - 1
-  const leftCount = Math.ceil(knownCount / 2)
-
-  const left  = Array.from({ length: leftCount }, (_, i) => i)
-  const right = Array.from({ length: knownCount - leftCount }, (_, i) => leftCount + i)
-
-  return [
-    ...left.map(binIdx => ({ binIdx, isReject: false })),
-    { binIdx: rejectIdx, isReject: true },
-    ...right.map(binIdx => ({ binIdx, isReject: false })),
-  ]
+  return Array.from({ length: BIN_COUNT }, (_, binIdx) => ({
+    binIdx,
+    isReject: binIdx === REJECT_BIN_IDX,
+  }))
 }
 
 interface ArchBinMapProps {

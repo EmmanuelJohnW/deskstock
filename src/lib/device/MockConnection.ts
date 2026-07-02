@@ -1,6 +1,8 @@
 import type { DeviceConnection, MessageHandler, DeviceMessage } from './types'
 
-const MOCK_BINS = ['10kΩ', '100nF', 'LED Red', 'ATtiny85', '1N4148', '10µH', 'HC-SR04']
+// Index 0 mirrors the real reject/unknown chute; indices 1-5 are mock
+// registered components — matches BIN_COUNT/REJECT_BIN_IDX in binLayout.ts.
+const MOCK_BINS = ['Unknown', '10kΩ', '100nF', 'LED Red', 'ATtiny85', '1N4148']
 const DEFAULT_PROFILE = 'Mixed Passives v2'
 const STEP_MS = 1500
 const STEPS = 20

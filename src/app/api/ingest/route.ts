@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
 import { logDeviceCall } from '@/lib/deviceLog'
 import { LIVE_RUN_STALE_MS } from '@/lib/device/liveRunStaleness'
+import { REJECT_BIN_IDX } from '@/lib/device/binLayout'
 
 // ─── Prerequisites — run in Supabase SQL editor before deploying ──────────────
 //
@@ -203,13 +204,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Roll up this cycle's counts by component name into the session tally.
-  // Bin 6 is always the reject/unknown chute — kept in bins for audit but never
+  // Bin 0 is always the reject/unknown chute — kept in bins for audit but never
   // tallied. Bins with count=0 are also skipped. Multiple bins carrying the same
   // name are summed (device may split a component across bins on overflow).
-  const REJECT_BIN = 6
   const tallyMap = new Map<string, number>()
   for (const b of data.bins) {
-    if (b.bin !== REJECT_BIN && b.count > 0) tallyMap.set(b.name, (tallyMap.get(b.name) ?? 0) + b.count)
+    if (b.bin !== REJECT_BIN_IDX && b.count > 0) tallyMap.set(b.name, (tallyMap.get(b.name) ?? 0) + b.count)
   }
 
   if (tallyMap.size > 0) {

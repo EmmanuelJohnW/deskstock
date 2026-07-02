@@ -5,7 +5,7 @@
  *   1. Connects to WiFi and syncs time via NTP.
  *   2. On button press: GETs /api/run-config to load the component weight table.
  *   3. Weighs each component with an HX711 load cell, matches within tolerance.
- *   4. Routes the component to the correct bin (bin 6 = reject/unknown).
+ *   4. Routes the component to the correct bin (bin 0 = reject/unknown).
  *   5. POSTs running snapshots to /api/ingest once per second.
  *   6. On second button press: POSTs the final complete payload and ends the run.
  *
@@ -62,15 +62,15 @@ struct Component {
   char name[48];
   int  weight_mg;
   int  tolerance_mg;
-  int  bin_idx;         // 0–5; bin 6 is the reject chute (never in the table)
+  int  bin_idx;         // 1–5; bin 0 is the reject chute (never in the table)
 };
 
-static Component weightTable[6];
+static Component weightTable[5];
 static int       tableSize = 0;
 
 // ── Run state ─────────────────────────────────────────────────────────────────
 
-static int           binCounts[7];   // index = bin_idx; 7 = reject slot
+static int           binCounts[6];   // index = bin_idx; index 0 = reject slot
 static String        runId;
 static time_t        runStartEpoch;
 static unsigned long runStartMs;
@@ -84,13 +84,13 @@ static HX711 scale;
 // ─────────────────────────────────────────────────────────────────────────────
 // routeToBin — STUB
 // Implement for your physical mechanism (servo, stepper, solenoid gate, etc.).
-// bin 0–5: registered components.  bin 6: reject/unknown chute.
+// bin 1–5: registered components.  bin 0: reject/unknown chute.
 // ─────────────────────────────────────────────────────────────────────────────
 void routeToBin(int bin) {
   Serial.printf("[route] → bin %d\n", bin);
 
   // Example: rotate a servo to a pre-mapped angle
-  // const int angles[7] = {0, 30, 60, 90, 120, 150, 180};
+  // const int angles[6] = {0, 36, 72, 108, 144, 180};
   // gateServo.write(angles[bin]);
   // delay(600);   // wait for gate to open fully
   // gateServo.write(90);  // return to home
@@ -110,7 +110,7 @@ int readWeightMg() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // matchComponent — linear scan through the weight table.
-// Returns bin_idx (0–5) on match, or 6 for reject.
+// Returns bin_idx (1–5) on match, or 0 for reject.
 // ─────────────────────────────────────────────────────────────────────────────
 int matchComponent(int weight_mg) {
   for (int i = 0; i < tableSize; i++) {
@@ -120,7 +120,7 @@ int matchComponent(int weight_mg) {
       return weightTable[i].bin_idx;
     }
   }
-  return 6;
+  return 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -187,12 +187,20 @@ int httpGet(const char* path, String& out) {
 // buildBinsArray — serialise current bin counts into the JSON doc.
 //
 // IMPORTANT: the complete payload requires sum(bins[].count) === total.
-// Bin 6 (reject) must be included in the array whenever items landed there.
-// The server marks the highest bin_idx as the reject chute, so always putting
-// bin 6 last keeps that invariant even if registered bins skip indices.
+// Bin 0 (reject) must be included in the array whenever items landed there.
+// The server always treats bin_idx 0 as the reject chute — fixed, not derived
+// from the payload — so this must stay in sync with binLayout.ts server-side.
 // ─────────────────────────────────────────────────────────────────────────────
 void buildBinsArray(DynamicJsonDocument& doc) {
   JsonArray bins = doc.createNestedArray("bins");
+
+  // Always emit bin 0 so the server sees the reject chute even when it's
+  // empty. Count = 0 is fine — it won't affect inventory, and the sum check
+  // passes as long as binCounts[0] is included.
+  JsonObject reject  = bins.createNestedObject();
+  reject["idx"]       = 0;
+  reject["component"] = "Unknown";
+  reject["count"]     = binCounts[0];
 
   for (int i = 0; i < tableSize; i++) {
     JsonObject b  = bins.createNestedObject();
@@ -200,14 +208,6 @@ void buildBinsArray(DynamicJsonDocument& doc) {
     b["component"] = weightTable[i].name;
     b["count"]     = binCounts[weightTable[i].bin_idx];
   }
-
-  // Always append bin 6 so the server can identify it as the reject chute
-  // (it marks max(bin_idx) as reject). Count = 0 is fine — it won't affect
-  // inventory, and the sum check passes as long as binCounts[6] is included.
-  JsonObject reject  = bins.createNestedObject();
-  reject["idx"]       = 6;
-  reject["component"] = "Unknown";
-  reject["count"]     = binCounts[6];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ void postRunning() {
 // postComplete — POST /api/ingest with status:"complete"
 //
 // The server validates: sum(bins[].count) === total.
-// totalSorted counts every routed component including rejects, and bin 6 is
+// totalSorted counts every routed component including rejects, and bin 0 is
 // always appended by buildBinsArray, so the invariant holds.
 // ─────────────────────────────────────────────────────────────────────────────
 void postComplete() {
@@ -274,14 +274,16 @@ bool fetchRunConfig() {
 
   tableSize = 0;
   for (JsonObject entry : doc.as<JsonArray>()) {
-    if (tableSize >= 6) break;
+    if (tableSize >= 5) break;
 
     strlcpy(weightTable[tableSize].name,
             entry["name"] | "?",
             sizeof(weightTable[0].name));
     weightTable[tableSize].weight_mg    = entry["weight_mg"]    | 0;
     weightTable[tableSize].tolerance_mg = entry["tolerance_mg"] | 50;
-    weightTable[tableSize].bin_idx      = entry["bin_idx"]      | tableSize;
+    // Default fills bin_idx 1..5 — bin 0 is reserved for the reject chute,
+    // never assigned to a registered component.
+    weightTable[tableSize].bin_idx      = entry["bin_idx"]      | (tableSize + 1);
     tableSize++;
   }
 

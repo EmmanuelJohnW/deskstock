@@ -1,15 +1,12 @@
 'use client'
 
-import { useState } from 'react'
 import { useDevice } from '@/lib/device/useDevice'
 import { ArchBinMap } from '@/components/ArchBinMap'
 import { StatusBar } from '@/components/StatusBar'
 import { TelemetryBar } from '@/components/TelemetryBar'
-import { BinCountControl } from '@/components/BinCountControl'
 
 export default function DashboardPage() {
   const device = useDevice()
-  const [binCount, setBinCount] = useState(7)
 
   const isRunning = device.runStatus === 'running'
 
@@ -47,16 +44,10 @@ export default function DashboardPage() {
           <h1 className="text-lg font-semibold text-gray-700 tracking-tight">
             {heading}
           </h1>
-          <BinCountControl
-            value={binCount}
-            onChange={setBinCount}
-            disabled={isRunning}
-          />
         </div>
 
         <ArchBinMap
           bins={device.bins}
-          binCount={binCount}
           activeBinIdx={isRunning ? device.lastBinEvent?.binIdx ?? null : null}
           activeSeq={device.lastBinEvent?.seq}
         />

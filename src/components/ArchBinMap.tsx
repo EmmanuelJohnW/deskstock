@@ -11,19 +11,22 @@ const ARC_RADIUS   = 322
 const HEX_W = 136
 const HEX_H = Math.round(HEX_W * 0.866)
 
+// Fixed by firmware: bins 0-5 are known components, bin 6 is always the
+// reject/unknown chute. Not configurable from the dashboard.
+const BIN_COUNT = 7
+
 interface Slot {
   binIdx: number
   isReject: boolean
 }
 
 /**
- * Splits known bins (0..binCount-2) into left/right halves around the
- * reject bin (binCount-1), which always lands in the center slot.
- * e.g. binCount=7 -> [0,1,2, REJECT(6), 3,4,5]
+ * Splits known bins (0-5) into left/right halves around the reject bin (6),
+ * which always lands in the center slot: [0,1,2, REJECT(6), 3,4,5]
  */
-function buildArchOrder(binCount: number): Slot[] {
-  const rejectIdx = binCount - 1
-  const knownCount = Math.max(0, binCount - 1)
+function buildArchOrder(): Slot[] {
+  const rejectIdx = BIN_COUNT - 1
+  const knownCount = BIN_COUNT - 1
   const leftCount = Math.ceil(knownCount / 2)
 
   const left  = Array.from({ length: leftCount }, (_, i) => i)
@@ -38,13 +41,12 @@ function buildArchOrder(binCount: number): Slot[] {
 
 interface ArchBinMapProps {
   bins: BinState[]
-  binCount: number
   activeBinIdx?: number | null
   activeSeq?: number
 }
 
-export function ArchBinMap({ bins, binCount, activeBinIdx = null, activeSeq = 0 }: ArchBinMapProps) {
-  const order = buildArchOrder(binCount)
+export function ArchBinMap({ bins, activeBinIdx = null, activeSeq = 0 }: ArchBinMapProps) {
+  const order = buildArchOrder()
   const stepDeg = order.length > 1 ? 180 / (order.length - 1) : 0
 
   // Positions/sizes are expressed as % of the container (not px) so the whole

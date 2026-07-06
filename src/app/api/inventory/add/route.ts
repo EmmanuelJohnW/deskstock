@@ -18,9 +18,21 @@ import { getServerClient } from '@/lib/supabase/server'
 // recorded as a plain 'adjustment' ledger delta — genuinely new stock, not
 // tied to any loan.
 //
+// p_borrow_id is an optional manual override: when given, that specific open
+// borrow is force-closed first (still must be fully covered by p_qty — no
+// partial returns), and FIFO only runs on whatever quantity is left after
+// that, against the remaining open borrows. Omit it (or pass null) for pure
+// FIFO, unchanged from before.
+//
+// This replaces the prior 2-argument version — DROP it first so Postgres
+// doesn't end up with two overloaded add_stock functions side by side.
+//
+// DROP FUNCTION IF EXISTS public.add_stock(text, integer);
+//
 // CREATE OR REPLACE FUNCTION public.add_stock(
 //   p_component text,
-//   p_qty       integer
+//   p_qty       integer,
+//   p_borrow_id uuid DEFAULT NULL
 // ) RETURNS TABLE(borrow_id uuid, borrower text, qty integer, taken_at timestamptz)
 // LANGUAGE plpgsql AS $$
 // DECLARE
@@ -31,9 +43,44 @@ import { getServerClient } from '@/lib/supabase/server'
 //     RAISE EXCEPTION 'qty_must_be_positive';
 //   END IF;
 //
-//   -- Table aliased as b: the OUT parameters above are named borrower/qty/
-//   -- taken_at, same as columns on borrows, so plpgsql can't tell them apart
-//   -- without qualification ("column reference is ambiguous").
+//   -- Tables aliased as b throughout: the OUT parameters above are named
+//   -- borrower/qty/taken_at, same as columns on borrows, so plpgsql can't
+//   -- tell them apart without qualification ("column reference is ambiguous").
+//   IF p_borrow_id IS NOT NULL THEN
+//     SELECT b.id, b.borrower, b.qty, b.taken_at
+//     INTO   v_borrow
+//     FROM   borrows b
+//     WHERE  b.id = p_borrow_id
+//       AND  b.component = p_component
+//       AND  b.returned_at IS NULL
+//     FOR UPDATE;
+//
+//     IF NOT FOUND THEN
+//       RAISE EXCEPTION 'borrow_not_found_or_already_returned';
+//     END IF;
+//
+//     IF v_remaining < v_borrow.qty THEN
+//       RAISE EXCEPTION 'qty_below_selected_borrow';
+//     END IF;
+//
+//     UPDATE borrows
+//     SET    returned_at = now()
+//     WHERE  id = v_borrow.id;
+//
+//     INSERT INTO inventory_ledger (component, delta, reason)
+//     VALUES (p_component, v_borrow.qty, 'return');
+//
+//     v_remaining := v_remaining - v_borrow.qty;
+//
+//     borrow_id := v_borrow.id;
+//     borrower  := v_borrow.borrower;
+//     qty       := v_borrow.qty;
+//     taken_at  := v_borrow.taken_at;
+//     RETURN NEXT;
+//   END IF;
+//
+//   -- FIFO for whatever's left. Excludes the borrow closed above (its
+//   -- returned_at is already set by the time this query runs).
 //   FOR v_borrow IN
 //     SELECT b.id, b.borrower, b.qty, b.taken_at
 //     FROM   borrows b
@@ -72,6 +119,7 @@ import { getServerClient } from '@/lib/supabase/server'
 const AddStockSchema = z.object({
   component: z.string().min(1),
   qty: z.number().int().min(1),
+  borrow_id: z.string().uuid().optional(),
 })
 
 interface ClosedBorrow {
@@ -94,15 +142,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 })
   }
 
-  const { component, qty } = parsed.data
+  const { component, qty, borrow_id } = parsed.data
   const supabase = getServerClient()
 
   const { data, error } = await supabase.rpc('add_stock', {
     p_component: component,
     p_qty: qty,
+    p_borrow_id: borrow_id ?? null,
   })
 
   if (error) {
+    if (error.message === 'qty_below_selected_borrow') {
+      return NextResponse.json({ success: false, error: 'qty_below_selected_borrow' }, { status: 422 })
+    }
+    if (error.message === 'borrow_not_found_or_already_returned') {
+      return NextResponse.json({ success: false, error: 'borrow_not_found_or_already_returned' }, { status: 409 })
+    }
     console.error('[POST /api/inventory/add] add_stock failed:', error.message)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }

@@ -43,6 +43,13 @@ interface ClosedBorrow {
   taken_at: string
 }
 
+interface OpenBorrowRow {
+  id: string
+  borrower: string
+  qty: number
+  taken_at: string
+}
+
 type SortKey = 'component' | 'qty' | 'borrowed'
 
 type DBBorrowRow = { component: string; qty: number }
@@ -74,6 +81,9 @@ export default function InventoryPage() {
   const [submitting, setSubmitting] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
   const [closedBorrows, setClosedBorrows] = useState<ClosedBorrow[] | null>(null)
+
+  const [openBorrows, setOpenBorrows] = useState<OpenBorrowRow[]>([])
+  const [overrideBorrowId, setOverrideBorrowId] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -115,6 +125,25 @@ export default function InventoryPage() {
     load()
   }, [load])
 
+  useEffect(() => {
+    setOverrideBorrowId('')
+    if (!addForm.component) {
+      setOpenBorrows([])
+      return
+    }
+    let cancelled = false
+    getSupabaseClient()
+      .from('borrows')
+      .select('id, borrower, qty, taken_at')
+      .eq('component', addForm.component)
+      .is('returned_at', null)
+      .order('taken_at', { ascending: true })
+      .then(({ data }) => {
+        if (!cancelled) setOpenBorrows((data ?? []) as unknown as OpenBorrowRow[])
+      })
+    return () => { cancelled = true }
+  }, [addForm.component])
+
   async function handleAddStock(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
@@ -127,6 +156,7 @@ export default function InventoryPage() {
         body: JSON.stringify({
           component: addForm.component,
           qty: Number(addForm.qty),
+          ...(overrideBorrowId ? { borrow_id: overrideBorrowId } : {}),
         }),
       })
       const body = (await res.json()) as {
@@ -135,7 +165,15 @@ export default function InventoryPage() {
         closed_borrows?: ClosedBorrow[]
       }
       if (!res.ok || !body.success) {
-        setAddError(typeof body.error === 'string' ? body.error : JSON.stringify(body.error))
+        setAddError(
+          body.error === 'qty_below_selected_borrow'
+            ? 'Qty must fully cover the selected loan — no partial returns.'
+            : body.error === 'borrow_not_found_or_already_returned'
+            ? 'That loan was already returned — refresh and try again.'
+            : typeof body.error === 'string'
+            ? body.error
+            : JSON.stringify(body.error)
+        )
         return
       }
       setClosedBorrows(body.closed_borrows ?? [])
@@ -207,6 +245,24 @@ export default function InventoryPage() {
             />
           </div>
 
+          {openBorrows.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 uppercase tracking-wider">Return match</label>
+              <select
+                value={overrideBorrowId}
+                onChange={e => setOverrideBorrowId(e.target.value)}
+                className={`${INPUT_CLS} min-w-[220px]`}
+              >
+                <option value="">Auto (earliest first)</option>
+                {openBorrows.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.borrower} — {b.qty} (taken {fmtDate(b.taken_at)})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={submitting}
@@ -221,7 +277,7 @@ export default function InventoryPage() {
         {closedBorrows && closedBorrows.length > 0 && (
           <div className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
             Matched against {closedBorrows.length} outstanding loan
-            {closedBorrows.length > 1 ? 's' : ''}, earliest first — marked returned:
+            {closedBorrows.length > 1 ? 's' : ''} — marked returned:
             <ul className="mt-1 list-disc list-inside">
               {closedBorrows.map(b => (
                 <li key={b.borrow_id}>

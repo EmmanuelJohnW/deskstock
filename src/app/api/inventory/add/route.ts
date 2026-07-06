@@ -31,12 +31,15 @@ import { getServerClient } from '@/lib/supabase/server'
 //     RAISE EXCEPTION 'qty_must_be_positive';
 //   END IF;
 //
+//   -- Table aliased as b: the OUT parameters above are named borrower/qty/
+//   -- taken_at, same as columns on borrows, so plpgsql can't tell them apart
+//   -- without qualification ("column reference is ambiguous").
 //   FOR v_borrow IN
-//     SELECT id, borrower, qty, taken_at
-//     FROM   borrows
-//     WHERE  component = p_component
-//       AND  returned_at IS NULL
-//     ORDER BY taken_at ASC
+//     SELECT b.id, b.borrower, b.qty, b.taken_at
+//     FROM   borrows b
+//     WHERE  b.component = p_component
+//       AND  b.returned_at IS NULL
+//     ORDER BY b.taken_at ASC
 //     FOR UPDATE
 //   LOOP
 //     EXIT WHEN v_remaining < v_borrow.qty;

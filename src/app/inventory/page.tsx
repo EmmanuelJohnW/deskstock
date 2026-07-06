@@ -1,12 +1,46 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
+
+// ─── get_inventory — run in Supabase SQL editor ──────────────────────────────
+//
+// FIX: the version of this function currently deployed sums inventory_ledger
+// while excluding 'borrow'/'return' reasons (mirroring reconcile_session's
+// "physical count" balance). That makes the qty shown here — and in the
+// Borrows page's "available" dropdown — read HIGHER than what's actually
+// free to lend, because outstanding borrows already reduced availability but
+// never get subtracted here. borrow_component's own guard sums ALL deltas
+// including borrow/return ("net ledger balance is the authoritative available
+// quantity" — see api/borrows/route.ts) and rejects with insufficient_stock
+// against that lower true number, even though the dropdown just told the
+// user there was plenty. Re-running this definition to sum every reason
+// makes both numbers agree.
+//
+// CREATE OR REPLACE FUNCTION public.get_inventory()
+// RETURNS TABLE(component text, qty bigint)
+// LANGUAGE sql
+// STABLE
+// AS $$
+//   SELECT component, SUM(delta) AS qty
+//   FROM   inventory_ledger
+//   GROUP  BY component
+//   ORDER  BY component;
+// $$;
+//
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface InventoryRow {
   component: string
   qty: number
   borrowed: number
+}
+
+interface ClosedBorrow {
+  borrow_id: string
+  borrower: string
+  qty: number
+  taken_at: string
 }
 
 type SortKey = 'component' | 'qty' | 'borrowed'
@@ -19,45 +53,100 @@ const COLS: { key: SortKey; label: string }[] = [
   { key: 'borrowed',  label: 'On Loan'   },
 ]
 
+const EMPTY_ADD_FORM = { component: '', qty: '1' }
+
+const INPUT_CLS =
+  'bg-white border border-gray-300 rounded px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-emerald-500'
+
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 export default function InventoryPage() {
   const [rows, setRows] = useState<InventoryRow[]>([])
+  const [componentNames, setComponentNames] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('component')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const supabase = getSupabaseClient()
-        const [{ data: inv, error: invErr }, { data: borrows, error: borrowErr }] =
-          await Promise.all([
-            supabase.rpc('get_inventory'),
-            supabase.from('borrows').select('component, qty').is('returned_at', null),
-          ])
+  const [addForm, setAddForm] = useState(EMPTY_ADD_FORM)
+  const [submitting, setSubmitting] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  const [closedBorrows, setClosedBorrows] = useState<ClosedBorrow[] | null>(null)
 
-        if (invErr)    throw new Error(invErr.message)
-        if (borrowErr) throw new Error(borrowErr.message)
+  const load = useCallback(async () => {
+    try {
+      const supabase = getSupabaseClient()
+      const [
+        { data: inv, error: invErr },
+        { data: borrows, error: borrowErr },
+        { data: catalog, error: catalogErr },
+      ] = await Promise.all([
+        supabase.rpc('get_inventory'),
+        supabase.from('borrows').select('component, qty').is('returned_at', null),
+        supabase.from('components').select('name').order('name', { ascending: true }),
+      ])
 
-        const loanedMap = ((borrows ?? []) as unknown as DBBorrowRow[]).reduce<
-          Record<string, number>
-        >((acc, b) => ({ ...acc, [b.component]: (acc[b.component] ?? 0) + b.qty }), {})
+      if (invErr)     throw new Error(invErr.message)
+      if (borrowErr)  throw new Error(borrowErr.message)
+      if (catalogErr) throw new Error(catalogErr.message)
 
-        setRows(
-          ((inv ?? []) as { component: string; qty: number }[]).map(r => ({
-            component: r.component,
-            qty: r.qty,
-            borrowed: loanedMap[r.component] ?? 0,
-          }))
-        )
-      } catch (e) {
-        setLoadError(e instanceof Error ? e.message : 'Load failed')
-      } finally {
-        setLoading(false)
-      }
+      const loanedMap = ((borrows ?? []) as unknown as DBBorrowRow[]).reduce<
+        Record<string, number>
+      >((acc, b) => ({ ...acc, [b.component]: (acc[b.component] ?? 0) + b.qty }), {})
+
+      setRows(
+        ((inv ?? []) as { component: string; qty: number }[]).map(r => ({
+          component: r.component,
+          qty: r.qty,
+          borrowed: loanedMap[r.component] ?? 0,
+        }))
+      )
+      setComponentNames(((catalog ?? []) as { name: string }[]).map(c => c.name))
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Load failed')
+    } finally {
+      setLoading(false)
     }
-    load()
   }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function handleAddStock(e: React.FormEvent) {
+    e.preventDefault()
+    setSubmitting(true)
+    setAddError(null)
+    setClosedBorrows(null)
+    try {
+      const res = await fetch('/api/inventory/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          component: addForm.component,
+          qty: Number(addForm.qty),
+        }),
+      })
+      const body = (await res.json()) as {
+        success: boolean
+        error?: string | Record<string, unknown>
+        closed_borrows?: ClosedBorrow[]
+      }
+      if (!res.ok || !body.success) {
+        setAddError(typeof body.error === 'string' ? body.error : JSON.stringify(body.error))
+        return
+      }
+      setClosedBorrows(body.closed_borrows ?? [])
+      setAddForm(EMPTY_ADD_FORM)
+      await load()
+    } catch {
+      setAddError('Network error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   function onSort(key: SortKey) {
     if (key === sortKey) {
@@ -86,6 +175,69 @@ export default function InventoryPage() {
   return (
     <div className="flex-1 p-6">
       <h1 className="text-xl font-semibold text-gray-900 mb-6">Inventory</h1>
+
+      {/* ── Add Stock ── */}
+      <section className="mb-8">
+        <h2 className="text-sm font-semibold text-gray-700 mb-3">Add Stock</h2>
+        <form onSubmit={handleAddStock} className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 uppercase tracking-wider">Component</label>
+            <select
+              value={addForm.component}
+              onChange={e => setAddForm(f => ({ ...f, component: e.target.value }))}
+              required
+              className={`${INPUT_CLS} min-w-[180px]`}
+            >
+              <option value="">Select…</option>
+              {componentNames.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 uppercase tracking-wider">Qty</label>
+            <input
+              type="number"
+              min={1}
+              value={addForm.qty}
+              onChange={e => setAddForm(f => ({ ...f, qty: e.target.value }))}
+              required
+              className={`${INPUT_CLS} w-24`}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+          >
+            {submitting ? 'Adding…' : 'Add Stock'}
+          </button>
+        </form>
+
+        {addError && <p className="mt-2 text-red-600 text-sm">{addError}</p>}
+
+        {closedBorrows && closedBorrows.length > 0 && (
+          <div className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            Matched against {closedBorrows.length} outstanding loan
+            {closedBorrows.length > 1 ? 's' : ''}, earliest first — marked returned:
+            <ul className="mt-1 list-disc list-inside">
+              {closedBorrows.map(b => (
+                <li key={b.borrow_id}>
+                  {b.qty} × {b.borrower} (taken {fmtDate(b.taken_at)})
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {closedBorrows && closedBorrows.length === 0 && (
+          <p className="mt-3 text-sm text-gray-400">
+            No outstanding loans to match — recorded as new stock.
+          </p>
+        )}
+      </section>
+
       <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left">

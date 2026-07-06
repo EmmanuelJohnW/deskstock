@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { exportReportsPdf, exportReportsExcel } from '@/lib/reports/export'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,6 +110,9 @@ export default function ReportsPage() {
   const [ledger,            setLedger]            = useState<LedgerRow[]>([])
   const [ledgerLoading,     setLedgerLoading]     = useState(false)
 
+  const [exporting,   setExporting]   = useState<'pdf' | 'excel' | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
+
   useEffect(() => {
     async function load() {
       try {
@@ -194,6 +198,28 @@ export default function ReportsPage() {
 
   useEffect(() => { loadLedger(selectedComponent) }, [selectedComponent, loadLedger])
 
+  async function handleExport(format: 'pdf' | 'excel') {
+    setExporting(format)
+    setExportError(null)
+    try {
+      const reportData = {
+        inventory,
+        discSessions,
+        borrows,
+        ledger: selectedComponent ? { component: selectedComponent, rows: ledger } : undefined,
+      }
+      if (format === 'pdf') {
+        await exportReportsPdf(reportData)
+      } else {
+        await exportReportsExcel(reportData)
+      }
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setExporting(null)
+    }
+  }
+
   if (loading) {
     return <div className="flex-1 flex items-center justify-center text-gray-400">Loading…</div>
   }
@@ -203,6 +229,27 @@ export default function ReportsPage() {
 
   return (
     <div className="flex-1 p-6 space-y-12">
+
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-gray-900">Reports</h1>
+        <div className="flex items-center gap-3">
+          {exportError && <p className="text-red-600 text-sm">{exportError}</p>}
+          <button
+            onClick={() => handleExport('pdf')}
+            disabled={exporting !== null}
+            className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium disabled:opacity-50 transition-colors"
+          >
+            {exporting === 'pdf' ? 'Generating…' : 'Download PDF'}
+          </button>
+          <button
+            onClick={() => handleExport('excel')}
+            disabled={exporting !== null}
+            className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+          >
+            {exporting === 'excel' ? 'Generating…' : 'Download Excel'}
+          </button>
+        </div>
+      </div>
 
       {/* ── 1. Current Inventory ─────────────────────────────────────────── */}
       <section>

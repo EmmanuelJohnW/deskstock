@@ -9,6 +9,13 @@ import { getServerClient } from '@/lib/supabase/server'
 // entry atomically with the borrows row. The borrows table is kept intact —
 // it remains the record of who has what and when it's due.
 //
+// v_available below sums ALL inventory_ledger reasons for the component
+// (baseline/sort_session/adjustment/borrow/return) — this is the authoritative
+// available quantity. get_inventory() (see src/app/inventory/page.tsx) must
+// use the same all-reasons sum, or the "available" number shown in the
+// Borrows dropdown will disagree with this guard and borrowing will fail with
+// insufficient_stock even when the UI just claimed there was enough.
+//
 // CREATE OR REPLACE FUNCTION public.borrow_component(
 //   p_component text,
 //   p_qty       integer,

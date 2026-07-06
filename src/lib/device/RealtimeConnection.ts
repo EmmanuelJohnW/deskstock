@@ -7,7 +7,10 @@ import { LIVE_RUN_STALE_MS } from './liveRunStaleness'
 
 const STALE_CHECK_INTERVAL_MS = 10_000
 
-type BinRow = { idx: number; component: string; count: number }
+// Shape as stored in the live_runs.bins jsonb column — matches the device's
+// wire payload (validated by BinSchema in api/ingest/route.ts), not the
+// internal BinState naming used by the reducer.
+type BinRow = { name: string; weight_g: number; bin: number; count: number }
 
 type LiveRunRow = {
   run_id: string
@@ -91,17 +94,17 @@ export class RealtimeConnection implements DeviceConnection {
     this.lastRow = row
     // Seed prevBins with actual counts so the first UPDATE emits only the delta,
     // not the full accumulated total again.
-    this.prevBins = new Map(row.bins.map(b => [b.idx, b.count]))
+    this.prevBins = new Map(row.bins.map(b => [b.bin, b.count]))
     this.emit({
       topic: 'sort/start',
-      payload: { run_id: row.run_id, profile: row.profile, bins: row.bins.map(b => b.component) },
+      payload: { run_id: row.run_id, profile: row.profile, bins: row.bins.map(b => b.name) },
     })
     // Emit current counts as a single bin/event burst so the UI is fully hydrated.
     for (const bin of row.bins) {
       if (bin.count > 0) {
         this.emit({
           topic: 'bin/event',
-          payload: { run_id: row.run_id, bin: bin.idx, component: bin.component, count: bin.count },
+          payload: { run_id: row.run_id, bin: bin.bin, component: bin.name, count: bin.count },
         })
       }
     }
@@ -112,10 +115,10 @@ export class RealtimeConnection implements DeviceConnection {
     if (payload.eventType === 'INSERT') {
       const row = payload.new
       this.lastRow = row
-      this.prevBins = new Map(row.bins.map((b: BinRow) => [b.idx, 0]))
+      this.prevBins = new Map(row.bins.map((b: BinRow) => [b.bin, 0]))
       this.emit({
         topic: 'sort/start',
-        payload: { run_id: row.run_id, profile: row.profile, bins: row.bins.map((b: BinRow) => b.component) },
+        payload: { run_id: row.run_id, profile: row.profile, bins: row.bins.map((b: BinRow) => b.name) },
       })
       this.emitBinDeltas(row)
       this.emitProgress(row)

@@ -43,6 +43,7 @@ export default function BorrowsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [returnError, setReturnError] = useState<string | null>(null)
+  const [undoError, setUndoError] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
 
   const load = useCallback(async () => {
@@ -103,6 +104,25 @@ export default function BorrowsPage() {
     if (!res.ok) {
       const body = (await res.json()) as { error: string }
       setReturnError(body.error ?? 'Return failed')
+    } else {
+      await load()
+    }
+  }
+
+  async function handleUndoReturn(borrowId: string) {
+    setUndoError(null)
+    const res = await fetch('/api/borrows/undo-return', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ borrow_id: borrowId }),
+    })
+    if (!res.ok) {
+      const body = (await res.json()) as { error: string }
+      setUndoError(
+        body.error === 'insufficient_stock_to_undo'
+          ? "Can't undo — those units are already accounted for elsewhere (re-lent or adjusted)."
+          : body.error ?? 'Undo failed'
+      )
     } else {
       await load()
     }
@@ -255,12 +275,13 @@ export default function BorrowsPage() {
           <span>{showHistory ? '▼' : '▶'}</span>
           Returned history ({returned.length})
         </button>
+        {undoError && <p className="mt-3 text-red-600 text-sm">{undoError}</p>}
         {showHistory && (
           <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left">
                 <tr>
-                  {['Component', 'Qty', 'Borrower', 'Taken', 'Returned'].map(h => (
+                  {['Component', 'Qty', 'Borrower', 'Taken', 'Returned', ''].map(h => (
                     <th key={h} className="px-4 py-3 text-gray-500 font-medium">
                       {h}
                     </th>
@@ -278,6 +299,14 @@ export default function BorrowsPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-xs font-mono">
                       {fmtDate(b.returned_at!)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleUndoReturn(b.id)}
+                        className="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium transition-colors"
+                      >
+                        Undo
+                      </button>
                     </td>
                   </tr>
                 ))}

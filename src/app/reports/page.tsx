@@ -47,11 +47,12 @@ interface LedgerRow {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const REASON_CLS: Record<string, string> = {
-  baseline:     'text-gray-400',
-  sort_session: 'text-emerald-600',
-  borrow:       'text-amber-600',
-  return:       'text-green-600',
-  adjustment:   'text-purple-600',
+  baseline:        'text-gray-400',
+  sort_session:    'text-emerald-600',
+  borrow:          'text-amber-600',
+  return:          'text-green-600',
+  return_reversal: 'text-red-600',
+  adjustment:      'text-purple-600',
 }
 
 function fmtDate(iso: string | null): string {

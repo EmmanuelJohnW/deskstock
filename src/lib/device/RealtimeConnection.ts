@@ -144,16 +144,16 @@ export class RealtimeConnection implements DeviceConnection {
 
   private emitBinDeltas(row: LiveRunRow): void {
     for (const bin of row.bins) {
-      const prev = this.prevBins.get(bin.idx) ?? 0
+      const prev = this.prevBins.get(bin.bin) ?? 0
       const delta = bin.count - prev
       if (delta > 0) {
         this.emit({
           topic: 'bin/event',
-          payload: { run_id: row.run_id, bin: bin.idx, component: bin.component, count: delta },
+          payload: { run_id: row.run_id, bin: bin.bin, component: bin.name, count: delta },
         })
       }
     }
-    this.prevBins = new Map(row.bins.map(b => [b.idx, b.count]))
+    this.prevBins = new Map(row.bins.map(b => [b.bin, b.count]))
   }
 
   // No DELETE event ever arrives if the device just stops pinging — treat a

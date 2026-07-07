@@ -27,6 +27,8 @@ interface DeviceLogEntry {
 }
 
 // Best-effort: a logging failure must never break the firmware-facing response.
+// Retention is handled separately by a daily Vercel Cron job — see
+// api/cron/cleanup-device-log.
 export async function logDeviceCall(supabase: SupabaseClient, entry: DeviceLogEntry): Promise<void> {
   const { error } = await supabase.from('device_log').insert({
     method: entry.method,

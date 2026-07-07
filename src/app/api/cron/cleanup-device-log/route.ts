@@ -2,14 +2,14 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerClient } from '@/lib/supabase/server'
 
-// ─── Vercel Cron — see vercel.json ("0 */5 * * *") ───────────────────────────
+// ─── Vercel Cron — see vercel.json ("0 0 * * *") ─────────────────────────────
 //
 // device_log gets one row per firmware-facing call (POST /api/ingest, GET
 // /api/run-config, GET /api/commands) and nothing ever trims it — it's read
 // straight through by the Device Traffic terminal and the online/offline
-// heartbeat on /device. This runs every 5 hours and deletes anything older
-// than that, so the table (and the terminal's backfill query) don't grow
-// unbounded.
+// heartbeat on /device. This runs once a day and deletes anything older than
+// 24h, so the table (and the terminal's backfill query) don't grow unbounded.
+// Daily is also the ceiling for cron frequency on Vercel's Hobby plan.
 //
 // Vercel signs cron-triggered requests with `Authorization: Bearer
 // $CRON_SECRET` when CRON_SECRET is set in the project's environment
@@ -17,7 +17,7 @@ import { getServerClient } from '@/lib/supabase/server'
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-const RETENTION_MS = 5 * 60 * 60 * 1000
+const RETENTION_MS = 24 * 60 * 60 * 1000
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization')

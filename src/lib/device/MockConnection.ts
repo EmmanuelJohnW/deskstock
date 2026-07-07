@@ -103,7 +103,10 @@ export class MockConnection implements DeviceConnection {
     const BIN_COUNT = MOCK_BINS.length
     const totalComponents = STEPS * COMPONENTS_PER_STEP
 
-    this.emit({ topic: 'sort/start', payload: { run_id: runId, bins: MOCK_BINS } })
+    this.emit({
+      topic: 'sort/start',
+      payload: { run_id: runId, bins: MOCK_BINS.map((name, idx) => ({ idx, name })) },
+    })
 
     let totalDispatched = 0
 

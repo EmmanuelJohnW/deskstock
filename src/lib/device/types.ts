@@ -6,7 +6,12 @@ export interface DeviceStatusPayload {
 
 export interface SortStartPayload {
   run_id: string
-  bins: string[]
+  // {idx, name} pairs, not a bare name array — bin identity must always flow
+  // through as the real bin number. A real device's ingest payload can omit
+  // empty bins, so the array's length/order shifts between polls; deriving
+  // a bin's index from its position in this array (as opposed to its own
+  // idx field) reintroduces exactly that bug.
+  bins: { idx: number; name: string }[]
 }
 
 export interface BinEventPayload {

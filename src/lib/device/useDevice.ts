@@ -6,6 +6,7 @@ import { INITIAL_DEVICE_STATE } from './state'
 import type { BinState, DeviceState } from './state'
 import type { DeviceConnection, DeviceMessage } from './types'
 import { MOCK_BIN_WEIGHTS_G } from './MockConnection'
+import { BIN_COUNT } from './binLayout'
 
 function reduce(state: DeviceState, msg: DeviceMessage): DeviceState {
   switch (msg.topic) {
@@ -18,11 +19,14 @@ function reduce(state: DeviceState, msg: DeviceMessage): DeviceState {
       }
 
     case 'sort/start': {
-      const bins: BinState[] = msg.payload.bins.map((component, idx) => ({
-        idx,
-        component,
-        count: 0,
-      }))
+      // Always a fixed BIN_COUNT-length array keyed by real bin index — never
+      // derived from array position, since the payload may only include a
+      // subset of bins (see SortStartPayload). Bins not yet in the payload
+      // start empty and pick up their name on their first bin/event.
+      const bins: BinState[] = Array.from({ length: BIN_COUNT }, (_, idx) => {
+        const known = msg.payload.bins.find(b => b.idx === idx)
+        return { idx, component: known?.name ?? '', count: 0 }
+      })
       return {
         ...state,
         runId: msg.payload.run_id,
@@ -37,10 +41,12 @@ function reduce(state: DeviceState, msg: DeviceMessage): DeviceState {
     }
 
     case 'bin/event': {
-      // count is a delta — accumulate into the running total for this bin
+      // count is a delta — accumulate into the running total for this bin.
+      // Also (re)set component: a bin that started empty at sort/start only
+      // learns its name once its first event arrives.
       const bins = state.bins.map(b =>
         b.idx === msg.payload.bin
-          ? { ...b, count: b.count + msg.payload.count }
+          ? { ...b, component: msg.payload.component, count: b.count + msg.payload.count }
           : b
       )
       return {

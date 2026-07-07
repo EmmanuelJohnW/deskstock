@@ -99,7 +99,7 @@ export class RealtimeConnection implements DeviceConnection {
     this.prevBins = new Map(row.bins.map(b => [b.bin, b.count]))
     this.emit({
       topic: 'sort/start',
-      payload: { run_id: row.run_id, bins: row.bins.map(b => b.name) },
+      payload: { run_id: row.run_id, bins: row.bins.map(b => ({ idx: b.bin, name: b.name })) },
     })
     // Emit current counts as a single bin/event burst so the UI is fully hydrated.
     for (const bin of row.bins) {
@@ -120,7 +120,7 @@ export class RealtimeConnection implements DeviceConnection {
       this.prevBins = new Map(row.bins.map((b: BinRow) => [b.bin, 0]))
       this.emit({
         topic: 'sort/start',
-        payload: { run_id: row.run_id, bins: row.bins.map((b: BinRow) => b.name) },
+        payload: { run_id: row.run_id, bins: row.bins.map((b: BinRow) => ({ idx: b.bin, name: b.name })) },
       })
       this.emitBinDeltas(row)
       this.emitProgress(row)

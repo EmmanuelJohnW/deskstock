@@ -5,6 +5,7 @@ import { createConnection } from './connection'
 import { INITIAL_DEVICE_STATE } from './state'
 import type { BinState, DeviceState } from './state'
 import type { DeviceConnection, DeviceMessage } from './types'
+import { MOCK_BIN_WEIGHTS_G } from './MockConnection'
 
 function reduce(state: DeviceState, msg: DeviceMessage): DeviceState {
   switch (msg.topic) {
@@ -25,7 +26,6 @@ function reduce(state: DeviceState, msg: DeviceMessage): DeviceState {
       return {
         ...state,
         runId: msg.payload.run_id,
-        profile: msg.payload.profile,
         bins,
         elapsedMs: 0,
         estRemainingMs: null,
@@ -78,7 +78,7 @@ function reduce(state: DeviceState, msg: DeviceMessage): DeviceState {
 }
 
 export interface DeviceControls {
-  start: (profile?: string) => void
+  start: () => void
   stop: () => void
   controllable: boolean
 }
@@ -118,7 +118,12 @@ export function useDevice(): UseDeviceReturn {
   }, [state.runStatus, state.runId])
 
   // Persist completed run to /api/runs — dev/mock only.
-  // In production, /api/ingest owns persistence; this effect is a no-op there.
+  // /api/runs shares its persistence logic with /api/ingest (see
+  // src/lib/ingest/completeRun.ts) so mock testing exercises the same
+  // session-tally/reconciliation path a real device run does. It stays a
+  // separate, unauthenticated endpoint rather than posting to /api/ingest
+  // directly because INGEST_TOKEN is a server-only secret that must never
+  // reach the browser bundle.
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_USE_MOCK !== 'true') return
     if (state.runStatus !== 'complete' || !state.runId) return
@@ -137,21 +142,24 @@ export function useDevice(): UseDeviceReturn {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         run_id: state.runId,
-        profile: state.profile ?? 'Unknown',
-        total: state.totalSorted ?? 0,
         duration_ms: state.durationMs ?? 0,
         started_at: startedAt,
-        bins: state.bins.map(b => ({ idx: b.idx, component: b.component, count: b.count })),
+        bins: state.bins.map(b => ({
+          name: b.component,
+          weight_g: MOCK_BIN_WEIGHTS_G[b.component] ?? 1,
+          bin: b.idx,
+          count: b.count,
+        })),
       }),
     }).catch(err => {
       console.error('[useDevice] Failed to persist run:', err)
     })
   }, [state.runStatus, state.runId]) // eslint-disable-line react-hooks/exhaustive-deps
-  // ^ state.bins/totalSorted/durationMs/profile are stable at the point runStatus→'complete'
+  // ^ state.bins/totalSorted/durationMs are stable at the point runStatus→'complete'
   //   fires; including them would cause spurious re-runs on every bin/event tick
 
-  const start = useCallback((profile?: string) => {
-    connRef.current?.start(profile)
+  const start = useCallback(() => {
+    connRef.current?.start()
   }, [])
 
   const stop = useCallback(() => {

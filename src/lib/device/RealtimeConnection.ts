@@ -18,7 +18,6 @@ type LiveRunRow = {
   elapsed_ms: number
   est_remaining_ms: number | null
   bins: BinRow[]
-  profile: string
   updated_at: string
 }
 
@@ -44,7 +43,10 @@ export class RealtimeConnection implements DeviceConnection {
         // useDevice calls subscribe(dispatch), so any emit here is guaranteed
         // to have handlers registered.
         if (status === 'SUBSCRIBED') {
-          this.emit({ topic: 'device/status', payload: { online: true, rssi: 0, fw: 'realtime' } })
+          // rssi isn't part of the current wire protocol (no per-request signal
+          // telemetry) — null rather than a fabricated number, so StatusBar
+          // correctly hides the reading instead of showing fake signal quality.
+          this.emit({ topic: 'device/status', payload: { online: true, rssi: null, fw: 'realtime' } })
           void this.catchUp(supabase)
         }
       })
@@ -72,7 +74,7 @@ export class RealtimeConnection implements DeviceConnection {
   }
 
   // Physical device controls sort start/stop — these are intentional no-ops
-  start(_profile?: string): void {}
+  start(): void {}
   stop(): void {}
 
   private emit(msg: DeviceMessage): void {
@@ -97,7 +99,7 @@ export class RealtimeConnection implements DeviceConnection {
     this.prevBins = new Map(row.bins.map(b => [b.bin, b.count]))
     this.emit({
       topic: 'sort/start',
-      payload: { run_id: row.run_id, profile: row.profile, bins: row.bins.map(b => b.name) },
+      payload: { run_id: row.run_id, bins: row.bins.map(b => b.name) },
     })
     // Emit current counts as a single bin/event burst so the UI is fully hydrated.
     for (const bin of row.bins) {
@@ -118,7 +120,7 @@ export class RealtimeConnection implements DeviceConnection {
       this.prevBins = new Map(row.bins.map((b: BinRow) => [b.bin, 0]))
       this.emit({
         topic: 'sort/start',
-        payload: { run_id: row.run_id, profile: row.profile, bins: row.bins.map((b: BinRow) => b.name) },
+        payload: { run_id: row.run_id, bins: row.bins.map((b: BinRow) => b.name) },
       })
       this.emitBinDeltas(row)
       this.emitProgress(row)

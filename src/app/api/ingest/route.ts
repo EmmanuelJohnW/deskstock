@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
 import { logDeviceCall } from '@/lib/deviceLog'
 import { LIVE_RUN_STALE_MS } from '@/lib/device/liveRunStaleness'
-import { REJECT_BIN_IDX } from '@/lib/device/binLayout'
+import { persistCompleteRun, CompleteRunSchema, CompleteRunBinSchema } from '@/lib/ingest/completeRun'
 
 // ─── Prerequisites — run in Supabase SQL editor before deploying ──────────────
 //
@@ -43,32 +43,21 @@ import { REJECT_BIN_IDX } from '@/lib/device/binLayout'
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BinSchema = z.object({
-  name:     z.string().min(1),
-  weight_g: z.number().positive(),
-  bin:      z.number().int().min(0),
-  count:    z.number().int().min(0),
-})
-
 const RunningBody = z.object({
   status:           z.literal('running'),
   run_id:           z.string().min(1),
   elapsed_ms:       z.number().int().min(0),
   est_remaining_ms: z.number().int().min(0).nullable(),
-  bins:             z.array(BinSchema),
+  bins:             z.array(CompleteRunBinSchema),
 })
 
-const CompleteBody = z.object({
-  status:      z.literal('complete'),
-  run_id:      z.string().min(1),
-  duration_ms: z.number().int().min(0),
-  started_at:  z.string().datetime(),
-  bins:        z.array(BinSchema).min(1),
+const CompleteBody = CompleteRunSchema.extend({
+  status: z.literal('complete'),
 })
 
 const IngestSchema = z.discriminatedUnion('status', [RunningBody, CompleteBody])
 
-type Bin = z.infer<typeof BinSchema>
+type Bin = z.infer<typeof CompleteRunBinSchema>
 
 function summarizeBins(bins: Bin[]): string {
   if (bins.length === 0) return 'no bins'
@@ -144,98 +133,12 @@ export async function POST(req: NextRequest) {
 
   // ── complete ───────────────────────────────────────────────────────────────
 
-  // Idempotency: a re-POST of the same run_id must not double-count the tally.
-  const { data: existing } = await supabase
-    .from('runs')
-    .select('run_id')
-    .eq('run_id', data.run_id)
-    .maybeSingle()
-
-  if (existing) {
-    return respond(supabase, 200, { success: true }, 'duplicate run_id')
-  }
-
-  // Every cycle must belong to an open counting session.
-  const { data: session, error: sessionError } = await supabase
-    .from('count_sessions')
-    .select('id')
-    .eq('status', 'open')
-    .order('started_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (sessionError) {
-    console.error('[POST /api/ingest] session lookup failed:', sessionError.message)
-    return respond(supabase, 500, { success: false, error: sessionError.message }, 'session lookup failed')
-  }
-
-  if (!session) {
-    return respond(supabase, 409, { success: false, error: 'no_open_session' }, 'no open session')
-  }
-
-  // Record the cycle run for audit history.
-  const total = data.bins.reduce((acc, b) => acc + b.count, 0)
-
-  const { error: runError } = await supabase.from('runs').insert({
+  const result = await persistCompleteRun(supabase, {
     run_id:      data.run_id,
-    started_at:  data.started_at,
     duration_ms: data.duration_ms,
-    total,
-    status:      'complete',
-    session_id:  session.id,
+    started_at:  data.started_at,
+    bins:        data.bins,
   })
-  if (runError) {
-    console.error('[POST /api/ingest] insert run failed:', runError.message)
-    return respond(supabase, 500, { success: false, error: runError.message }, 'insert run failed')
-  }
-
-  // Record individual bin snapshots — bin↔component mapping is cycle-local only.
-  const { error: binsError } = await supabase.from('bins').insert(
-    data.bins.map(b => ({
-      run_id:    data.run_id,
-      idx:       b.bin,
-      component: b.name,
-      count:     b.count,
-    })),
-  )
-  if (binsError) {
-    console.error('[POST /api/ingest] insert bins failed:', binsError.message)
-    return respond(supabase, 500, { success: false, error: binsError.message }, 'insert bins failed')
-  }
-
-  // Roll up this cycle's counts by component name into the session tally.
-  // Bin 0 is always the reject/unknown chute — kept in bins for audit but never
-  // tallied. Bins with count=0 are also skipped. Multiple bins carrying the same
-  // name are summed (device may split a component across bins on overflow).
-  const tallyMap = new Map<string, number>()
-  for (const b of data.bins) {
-    if (b.bin !== REJECT_BIN_IDX && b.count > 0) tallyMap.set(b.name, (tallyMap.get(b.name) ?? 0) + b.count)
-  }
-
-  if (tallyMap.size > 0) {
-    const tallyRows = Array.from(tallyMap, ([component, qty]) => ({ component, qty }))
-
-    // ── session_tallies is where the per-session count lives ─────────────────
-    // add_to_session_tally does qty += excluded.qty on conflict, never replacing.
-    const { error: tallyError } = await supabase.rpc('add_to_session_tally', {
-      p_session_id: session.id,
-      p_rows:       tallyRows,
-    })
-    if (tallyError) {
-      console.error('[POST /api/ingest] add_to_session_tally failed:', tallyError.message)
-      return respond(supabase, 500, { success: false, error: tallyError.message }, 'tally failed')
-    }
-  }
-
-  // Remove the live entry — this cycle is fully committed.
-  const { error: delError } = await supabase
-    .from('live_runs')
-    .delete()
-    .eq('run_id', data.run_id)
-  if (delError) {
-    // Non-fatal: tally is already written; stale row will clear on next cycle.
-    console.error('[POST /api/ingest] delete live_runs failed:', delError.message)
-  }
-
-  return respond(supabase, 201, { success: true }, `complete ${summarizeBins(data.bins)}`)
+  const summary = result.status === 201 ? `complete ${summarizeBins(data.bins)}` : result.summary
+  return respond(supabase, result.status, result.body, summary)
 }

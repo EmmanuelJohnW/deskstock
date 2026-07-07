@@ -1,12 +1,11 @@
 export interface DeviceStatusPayload {
   online: boolean
-  rssi: number
+  rssi: number | null
   fw: string
 }
 
 export interface SortStartPayload {
   run_id: string
-  profile: string
   bins: string[]
 }
 
@@ -47,7 +46,7 @@ export interface DeviceConnection {
   connect(): void
   disconnect(): void
   subscribe(handler: MessageHandler): () => void
-  start(profile?: string): void
+  start(): void
   stop(): void
   readonly controllable: boolean
 }

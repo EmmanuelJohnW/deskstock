@@ -29,7 +29,6 @@ export default function DashboardPage() {
         online={device.online}
         rssi={device.rssi}
         fw={device.fw}
-        profile={device.profile}
         runId={device.runId}
       />
 

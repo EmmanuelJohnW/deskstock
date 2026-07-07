@@ -3,7 +3,20 @@ import type { DeviceConnection, MessageHandler, DeviceMessage } from './types'
 // Index 0 mirrors the real reject/unknown chute; indices 1-5 are mock
 // registered components — matches BIN_COUNT/REJECT_BIN_IDX in binLayout.ts.
 const MOCK_BINS = ['Unknown', '10kΩ', '100nF', 'LED Red', 'ATtiny85', '1N4148']
-const DEFAULT_PROFILE = 'Mixed Passives v2'
+
+// Per-component weight, grams — only exists so useDevice's dev-mode persistence
+// path (POST /api/runs) can populate weight_g on each bin, matching the shape
+// /api/ingest's BinSchema expects. Not physically meaningful for 'Unknown'
+// (reject); weight_g isn't stored anywhere downstream, it just has to be positive.
+export const MOCK_BIN_WEIGHTS_G: Record<string, number> = {
+  Unknown: 1,
+  '10kΩ': 0.24,
+  '100nF': 0.06,
+  'LED Red': 0.09,
+  ATtiny85: 0.12,
+  '1N4148': 0.03,
+}
+
 const STEP_MS = 1500
 const STEPS = 20
 const COMPONENTS_PER_STEP = 10 // delta emitted per bin/event
@@ -29,10 +42,10 @@ export class MockConnection implements DeviceConnection {
     this.handlers.clear()
   }
 
-  start(profile = DEFAULT_PROFILE): void {
+  start(): void {
     if (!this.active) return
     this.clearSortTimers()
-    this.runCycle(profile)
+    this.runCycle()
   }
 
   stop(): void {
@@ -84,13 +97,13 @@ export class MockConnection implements DeviceConnection {
     })
   }
 
-  private runCycle(profile: string): void {
+  private runCycle(): void {
     const runId = `mock-${Date.now()}`
     this.currentRunId = runId
     const BIN_COUNT = MOCK_BINS.length
     const totalComponents = STEPS * COMPONENTS_PER_STEP
 
-    this.emit({ topic: 'sort/start', payload: { run_id: runId, profile, bins: MOCK_BINS } })
+    this.emit({ topic: 'sort/start', payload: { run_id: runId, bins: MOCK_BINS } })
 
     let totalDispatched = 0
 

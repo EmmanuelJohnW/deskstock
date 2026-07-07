@@ -15,7 +15,6 @@ export interface DeviceState {
   rssi: number | null
   fw: string | null
   runId: string | null
-  profile: string | null
   bins: BinState[]
   elapsedMs: number
   estRemainingMs: number | null
@@ -30,7 +29,6 @@ export const INITIAL_DEVICE_STATE: DeviceState = {
   rssi: null,
   fw: null,
   runId: null,
-  profile: null,
   bins: [],
   elapsedMs: 0,
   estRemainingMs: null,

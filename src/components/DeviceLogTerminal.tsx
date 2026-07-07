@@ -38,12 +38,15 @@ export function DeviceLogTerminal() {
     let cancelled = false
 
     async function backfill() {
+      // Newest MAX_ROWS first, then reversed — ordering ascending with a
+      // limit would instead return the OLDEST rows once the table grows
+      // past MAX_ROWS, so a just-inserted row would never appear here.
       const { data } = await supabase
         .from('device_log')
         .select('id, method, endpoint, status_code, summary, created_at')
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(MAX_ROWS)
-      if (!cancelled && data) setRows(data as unknown as LogRow[])
+      if (!cancelled && data) setRows((data as unknown as LogRow[]).reverse())
     }
     backfill()
 

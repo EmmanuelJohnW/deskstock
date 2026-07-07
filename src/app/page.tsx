@@ -4,6 +4,7 @@ import { useDevice } from '@/lib/device/useDevice'
 import { ArchBinMap } from '@/components/ArchBinMap'
 import { StatusBar } from '@/components/StatusBar'
 import { TelemetryBar } from '@/components/TelemetryBar'
+import { SessionPanel } from '@/components/SessionPanel'
 
 export default function DashboardPage() {
   const device = useDevice()
@@ -38,6 +39,8 @@ export default function DashboardPage() {
         liveSorted={liveSorted}
         runStatus={device.runStatus}
       />
+
+      <SessionPanel />
 
       <main className="flex-1 flex flex-col items-center justify-center gap-8 p-4 sm:p-6 w-full">
         <div className="flex flex-wrap items-center justify-center gap-4">

@@ -15,6 +15,18 @@ import { getServerClient } from '@/lib/supabase/server'
 // by a sort-session correction, reversing the return would make the ledger
 // balance lie about what's physically on hand.
 //
+// inventory_ledger.reason has a CHECK constraint allow-listing valid values
+// (baseline/sort_session/borrow/return/adjustment) — 'return_reversal' is new
+// and must be added to it first, or every insert here fails with
+// "violates check constraint \"inventory_ledger_reason_check\"":
+//
+// ALTER TABLE public.inventory_ledger
+//   DROP CONSTRAINT inventory_ledger_reason_check;
+//
+// ALTER TABLE public.inventory_ledger
+//   ADD CONSTRAINT inventory_ledger_reason_check
+//   CHECK (reason = ANY (ARRAY['baseline'::text, 'sort_session'::text, 'borrow'::text, 'return'::text, 'adjustment'::text, 'return_reversal'::text]));
+//
 // CREATE OR REPLACE FUNCTION public.undo_return(p_borrow_id uuid)
 // RETURNS void LANGUAGE plpgsql AS $$
 // DECLARE

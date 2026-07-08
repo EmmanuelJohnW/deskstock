@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { DeviceLogTerminal } from '@/components/DeviceLogTerminal'
 import { LIVE_RUN_STALE_MS } from '@/lib/device/liveRunStaleness'
+import { useInventory } from '@/lib/inventory/context'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ function timeAgo(ms: number): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
-async function fetchStatus(): Promise<DeviceStatus> {
+async function fetchStatus(inventoryId: number | null): Promise<DeviceStatus> {
   const supabase = getSupabaseClient()
 
   const liveRunCutoff = new Date(Date.now() - LIVE_RUN_STALE_MS).toISOString()
@@ -56,7 +57,12 @@ async function fetchStatus(): Promise<DeviceStatus> {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
-    supabase.from('components').select('*', { count: 'exact', head: true }),
+    inventoryId === null
+      ? Promise.resolve({ count: 0 })
+      : supabase
+          .from('components')
+          .select('*', { count: 'exact', head: true })
+          .eq('inventory_id', inventoryId),
   ])
 
   // Rows older than the cutoff are excluded above — a lingering row from a
@@ -187,6 +193,7 @@ const SETUP_STEPS = [
 ]
 
 export default function DevicePage() {
+  const { selectedInventoryId } = useInventory()
   const [status, setStatus] = useState<DeviceStatus | null>(null)
   const [origin, setOrigin] = useState('')
   const [lastRefresh, setLastRefresh] = useState(0)
@@ -196,10 +203,10 @@ export default function DevicePage() {
   }, [])
 
   const refresh = useCallback(async () => {
-    const s = await fetchStatus()
+    const s = await fetchStatus(selectedInventoryId)
     setStatus(s)
     setLastRefresh(Date.now())
-  }, [])
+  }, [selectedInventoryId])
 
   useEffect(() => {
     refresh()

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { NavBar } from '@/components/NavBar'
+import { InventoryProvider } from '@/lib/inventory/context'
 
 const plusJakarta = Plus_Jakarta_Sans({
   variable: '--font-plus-jakarta',
@@ -30,8 +31,10 @@ export default function RootLayout({
       className={`${plusJakarta.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-gray-50 text-gray-900">
-        <NavBar />
-        {children}
+        <InventoryProvider>
+          <NavBar />
+          {children}
+        </InventoryProvider>
       </body>
     </html>
   )

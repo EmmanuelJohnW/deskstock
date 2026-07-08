@@ -27,16 +27,19 @@ import { getServerClient } from '@/lib/supabase/server'
 //   ADD CONSTRAINT inventory_ledger_reason_check
 //   CHECK (reason = ANY (ARRAY['baseline'::text, 'sort_session'::text, 'borrow'::text, 'return'::text, 'adjustment'::text, 'return_reversal'::text]));
 //
+// No p_inventory_id parameter needed — same reasoning as return_borrow.
+//
 // CREATE OR REPLACE FUNCTION public.undo_return(p_borrow_id uuid)
 // RETURNS void LANGUAGE plpgsql AS $$
 // DECLARE
-//   v_component   text;
-//   v_qty         integer;
-//   v_returned_at timestamptz;
-//   v_available   integer;
+//   v_component    text;
+//   v_qty          integer;
+//   v_returned_at  timestamptz;
+//   v_inventory_id bigint;
+//   v_available    integer;
 // BEGIN
-//   SELECT component, qty, returned_at
-//   INTO   v_component, v_qty, v_returned_at
+//   SELECT component, qty, returned_at, inventory_id
+//   INTO   v_component, v_qty, v_returned_at, v_inventory_id
 //   FROM   borrows
 //   WHERE  id = p_borrow_id;
 //
@@ -51,7 +54,8 @@ import { getServerClient } from '@/lib/supabase/server'
 //   SELECT COALESCE(SUM(delta), 0)
 //   INTO   v_available
 //   FROM   inventory_ledger
-//   WHERE  component = v_component;
+//   WHERE  component = v_component
+//     AND  inventory_id = v_inventory_id;
 //
 //   IF v_available < v_qty THEN
 //     RAISE EXCEPTION 'insufficient_stock_to_undo';
@@ -61,8 +65,8 @@ import { getServerClient } from '@/lib/supabase/server'
 //   SET    returned_at = NULL
 //   WHERE  id = p_borrow_id;
 //
-//   INSERT INTO inventory_ledger (component, delta, reason)
-//   VALUES (v_component, -v_qty, 'return_reversal');
+//   INSERT INTO inventory_ledger (component, delta, reason, inventory_id)
+//   VALUES (v_component, -v_qty, 'return_reversal', v_inventory_id);
 // END;
 // $$;
 //

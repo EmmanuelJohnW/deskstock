@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { InventorySelector } from '@/components/InventorySelector'
 
 interface NavItem {
   href: string
@@ -44,6 +45,7 @@ export function NavBar() {
           </Link>
         )
       })}
+      <InventorySelector />
     </nav>
   )
 }

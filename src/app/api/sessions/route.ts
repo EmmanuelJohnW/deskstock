@@ -3,8 +3,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
 
+// ─── Migration SQL — run in Supabase SQL editor ───────────────────────────────
+//
+// A session belongs to exactly one inventory — everything counted during it
+// (bins, session_tallies, ledger entries) rolls up under that inventory. The
+// "only one open session at a time" rule below stays GLOBAL, not per-inventory:
+// there's one physical sorter, so it can only be mid-run for one lab at a time.
+//
+// alter table public.count_sessions
+//   add column inventory_id bigint references public.inventories(id);
+//
+// -- Backfill existing rows into a default inventory first, then:
+// alter table public.count_sessions
+//   alter column inventory_id set not null;
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
 const StartSchema = z.object({
   operator: z.string().min(1).optional(),
+  inventory_id: z.number().int().positive(),
 })
 
 export async function POST(req: NextRequest) {
@@ -22,10 +39,11 @@ export async function POST(req: NextRequest) {
 
   const supabase = getServerClient()
 
-  // Only one open session at a time.
+  // Only one open session at a time, across all inventories — one physical
+  // sorter can only be mid-run for one lab at once.
   const { data: existing, error: checkError } = await supabase
     .from('count_sessions')
-    .select('id')
+    .select('id, inventory_id')
     .eq('status', 'open')
     .maybeSingle()
 
@@ -36,14 +54,19 @@ export async function POST(req: NextRequest) {
 
   if (existing) {
     return NextResponse.json(
-      { success: false, error: 'session_already_open', session_id: existing.id },
+      {
+        success: false,
+        error: 'session_already_open',
+        session_id: existing.id,
+        inventory_id: existing.inventory_id,
+      },
       { status: 409 },
     )
   }
 
   const { data, error } = await supabase
     .from('count_sessions')
-    .insert({ operator: parsed.data.operator ?? null })
+    .insert({ operator: parsed.data.operator ?? null, inventory_id: parsed.data.inventory_id })
     .select('id, started_at')
     .single()
 

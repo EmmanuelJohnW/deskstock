@@ -29,10 +29,15 @@ import { getServerClient } from '@/lib/supabase/server'
 //
 // DROP FUNCTION IF EXISTS public.add_stock(text, integer);
 //
+// p_inventory_id scopes every lookup below — component names are only unique
+// per inventory now (see api/components/route.ts), so matching on component
+// text alone would let stock from one lab satisfy borrows from another.
+//
 // CREATE OR REPLACE FUNCTION public.add_stock(
-//   p_component text,
-//   p_qty       integer,
-//   p_borrow_id uuid DEFAULT NULL
+//   p_component    text,
+//   p_qty          integer,
+//   p_inventory_id bigint,
+//   p_borrow_id    uuid DEFAULT NULL
 // ) RETURNS TABLE(borrow_id uuid, borrower text, qty integer, taken_at timestamptz)
 // LANGUAGE plpgsql AS $$
 // DECLARE
@@ -52,6 +57,7 @@ import { getServerClient } from '@/lib/supabase/server'
 //     FROM   borrows b
 //     WHERE  b.id = p_borrow_id
 //       AND  b.component = p_component
+//       AND  b.inventory_id = p_inventory_id
 //       AND  b.returned_at IS NULL
 //     FOR UPDATE;
 //
@@ -67,8 +73,8 @@ import { getServerClient } from '@/lib/supabase/server'
 //     SET    returned_at = now()
 //     WHERE  id = v_borrow.id;
 //
-//     INSERT INTO inventory_ledger (component, delta, reason)
-//     VALUES (p_component, v_borrow.qty, 'return');
+//     INSERT INTO inventory_ledger (component, delta, reason, inventory_id)
+//     VALUES (p_component, v_borrow.qty, 'return', p_inventory_id);
 //
 //     v_remaining := v_remaining - v_borrow.qty;
 //
@@ -85,6 +91,7 @@ import { getServerClient } from '@/lib/supabase/server'
 //     SELECT b.id, b.borrower, b.qty, b.taken_at
 //     FROM   borrows b
 //     WHERE  b.component = p_component
+//       AND  b.inventory_id = p_inventory_id
 //       AND  b.returned_at IS NULL
 //     ORDER BY b.taken_at ASC
 //     FOR UPDATE
@@ -95,8 +102,8 @@ import { getServerClient } from '@/lib/supabase/server'
 //     SET    returned_at = now()
 //     WHERE  id = v_borrow.id;
 //
-//     INSERT INTO inventory_ledger (component, delta, reason)
-//     VALUES (p_component, v_borrow.qty, 'return');
+//     INSERT INTO inventory_ledger (component, delta, reason, inventory_id)
+//     VALUES (p_component, v_borrow.qty, 'return', p_inventory_id);
 //
 //     v_remaining := v_remaining - v_borrow.qty;
 //
@@ -108,8 +115,8 @@ import { getServerClient } from '@/lib/supabase/server'
 //   END LOOP;
 //
 //   IF v_remaining > 0 THEN
-//     INSERT INTO inventory_ledger (component, delta, reason)
-//     VALUES (p_component, v_remaining, 'adjustment');
+//     INSERT INTO inventory_ledger (component, delta, reason, inventory_id)
+//     VALUES (p_component, v_remaining, 'adjustment', p_inventory_id);
 //   END IF;
 // END;
 // $$;
@@ -119,6 +126,7 @@ import { getServerClient } from '@/lib/supabase/server'
 const AddStockSchema = z.object({
   component: z.string().min(1),
   qty: z.number().int().min(1),
+  inventory_id: z.number().int().positive(),
   borrow_id: z.string().uuid().optional(),
 })
 
@@ -142,12 +150,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 })
   }
 
-  const { component, qty, borrow_id } = parsed.data
+  const { component, qty, inventory_id, borrow_id } = parsed.data
   const supabase = getServerClient()
 
   const { data, error } = await supabase.rpc('add_stock', {
     p_component: component,
     p_qty: qty,
+    p_inventory_id: inventory_id,
     p_borrow_id: borrow_id ?? null,
   })
 

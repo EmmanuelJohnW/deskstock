@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { useInventory } from '@/lib/inventory/context'
 
 interface ComponentRow {
   id: number
@@ -16,6 +17,7 @@ const INPUT_CLS =
   'bg-white border border-gray-300 rounded px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-emerald-500'
 
 export default function ComponentsPage() {
+  const { selectedInventoryId, loading: inventoryLoading } = useInventory()
   const [components, setComponents] = useState<ComponentRow[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<ComponentRow | null>(null)
@@ -25,13 +27,19 @@ export default function ComponentsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    if (selectedInventoryId === null) {
+      setComponents([])
+      setLoading(false)
+      return
+    }
     const { data } = await getSupabaseClient()
       .from('components')
       .select('*')
+      .eq('inventory_id', selectedInventoryId)
       .order('name', { ascending: true })
     setComponents((data ?? []) as unknown as ComponentRow[])
     setLoading(false)
-  }, [])
+  }, [selectedInventoryId])
 
   useEffect(() => { load() }, [load])
 
@@ -49,12 +57,14 @@ export default function ComponentsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (selectedInventoryId === null) return
     setSubmitting(true)
     setFormError(null)
 
     const payload = {
       name: form.name.trim(),
       weight_g: parseFloat(form.weight_g),
+      inventory_id: selectedInventoryId,
       ...(editing ? { id: editing.id } : {}),
     }
 
@@ -83,11 +93,12 @@ export default function ComponentsPage() {
   }
 
   async function handleDelete(c: ComponentRow) {
+    if (selectedInventoryId === null) return
     setDeleteError(null)
     const res = await fetch('/api/components', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: c.id }),
+      body: JSON.stringify({ id: c.id, inventory_id: selectedInventoryId }),
     })
     if (!res.ok) {
       const body = (await res.json()) as { error: string }
@@ -98,8 +109,16 @@ export default function ComponentsPage() {
     }
   }
 
-  if (loading) {
+  if (inventoryLoading || loading) {
     return <div className="flex-1 flex items-center justify-center text-gray-400">Loading…</div>
+  }
+
+  if (selectedInventoryId === null) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-gray-400">
+        No inventory selected — create one from the dropdown above.
+      </div>
+    )
   }
 
   return (

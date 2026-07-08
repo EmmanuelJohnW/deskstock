@@ -4,6 +4,24 @@ import { getServerClient } from '@/lib/supabase/server'
 
 // ─── reconcile_session — run in Supabase SQL editor ───────────────────────────
 //
+// inventory_ledger, borrows and reconciliations all need an inventory_id
+// column now that component names are only unique per inventory (see
+// api/components/route.ts) — two labs can each have a "10k resistor" as
+// unrelated stock, so every balance/outstanding-borrow lookup below must
+// filter by inventory_id, not component name alone, or two labs' numbers
+// would bleed into each other.
+//
+// alter table public.inventory_ledger
+//   add column inventory_id bigint references public.inventories(id);
+// alter table public.borrows
+//   add column inventory_id bigint references public.inventories(id);
+// alter table public.reconciliations
+//   add column inventory_id bigint references public.inventories(id);
+// -- Backfill existing rows into a default inventory first, then:
+// alter table public.inventory_ledger  alter column inventory_id set not null;
+// alter table public.borrows           alter column inventory_id set not null;
+// alter table public.reconciliations   alter column inventory_id set not null;
+//
 // For each component tallied during the session:
 //
 //   • No prior ledger history → write a 'baseline' ledger row (delta = counted).
@@ -19,6 +37,7 @@ import { getServerClient } from '@/lib/supabase/server'
 // CREATE OR REPLACE FUNCTION public.reconcile_session(p_session_id bigint)
 // RETURNS void LANGUAGE plpgsql AS $$
 // DECLARE
+//   v_inventory_id       bigint;
 //   v_component          text;
 //   v_counted            integer;
 //   v_ledger_balance     integer;
@@ -27,10 +46,13 @@ import { getServerClient } from '@/lib/supabase/server'
 //   v_difference         integer;
 //   v_has_prior_history  boolean;
 // BEGIN
-//   -- Guard: session must exist and be open.
-//   IF NOT EXISTS (
-//     SELECT 1 FROM count_sessions WHERE id = p_session_id AND status = 'open'
-//   ) THEN
+//   -- Guard: session must exist and be open. Also pins the inventory every
+//   -- ledger/reconciliation row written below belongs to.
+//   SELECT inventory_id INTO v_inventory_id
+//   FROM   count_sessions
+//   WHERE  id = p_session_id AND status = 'open';
+//
+//   IF NOT FOUND THEN
 //     RAISE EXCEPTION 'session_not_open';
 //   END IF;
 //
@@ -39,20 +61,21 @@ import { getServerClient } from '@/lib/supabase/server'
 //     FROM   session_tallies
 //     WHERE  session_id = p_session_id
 //   LOOP
-//     -- Has this component ever been sorted or baselined?
+//     -- Has this component ever been sorted or baselined, in this inventory?
 //     -- borrow/return entries are excluded: you cannot borrow what was never
 //     -- sorted in, so their presence implies a prior baseline exists anyway,
 //     -- but excluding them makes the intent explicit.
 //     SELECT EXISTS (
 //       SELECT 1 FROM inventory_ledger
 //       WHERE  component = v_component
+//         AND  inventory_id = v_inventory_id
 //         AND  reason NOT IN ('borrow', 'return')
 //     ) INTO v_has_prior_history;
 //
 //     IF NOT v_has_prior_history THEN
-//       -- First time we've seen this component: seed the ledger.
-//       INSERT INTO inventory_ledger (component, delta, reason, session_id)
-//       VALUES (v_component, v_counted, 'baseline', p_session_id);
+//       -- First time we've seen this component in this inventory: seed the ledger.
+//       INSERT INTO inventory_ledger (component, delta, reason, session_id, inventory_id)
+//       VALUES (v_component, v_counted, 'baseline', p_session_id, v_inventory_id);
 //
 //     ELSE
 //       -- Balance from sort-derived entries only (baseline + sort_session +
@@ -63,6 +86,7 @@ import { getServerClient } from '@/lib/supabase/server'
 //       INTO   v_ledger_balance
 //       FROM   inventory_ledger
 //       WHERE  component = v_component
+//         AND  inventory_id = v_inventory_id
 //         AND  reason NOT IN ('borrow', 'return');
 //
 //       -- Parts currently borrowed out are not physically present; exclude them.
@@ -70,6 +94,7 @@ import { getServerClient } from '@/lib/supabase/server'
 //       INTO   v_outstanding
 //       FROM   borrows
 //       WHERE  component = v_component
+//         AND  inventory_id = v_inventory_id
 //         AND  returned_at IS NULL;
 //
 //       v_expected   := v_ledger_balance - v_outstanding;
@@ -78,13 +103,13 @@ import { getServerClient } from '@/lib/supabase/server'
 //       -- Record the reconciliation (zero-difference rows are included so every
 //       -- counted component has an audit entry; filter on difference <> 0 for
 //       -- the discrepancy report).
-//       INSERT INTO reconciliations (session_id, component, expected, counted, difference)
-//       VALUES (p_session_id, v_component, v_expected, v_counted, v_difference);
+//       INSERT INTO reconciliations (session_id, component, expected, counted, difference, inventory_id)
+//       VALUES (p_session_id, v_component, v_expected, v_counted, v_difference, v_inventory_id);
 //
 //       -- Physical count wins: write a correcting delta only when out of balance.
 //       IF v_difference <> 0 THEN
-//         INSERT INTO inventory_ledger (component, delta, reason, session_id)
-//         VALUES (v_component, v_difference, 'sort_session', p_session_id);
+//         INSERT INTO inventory_ledger (component, delta, reason, session_id, inventory_id)
+//         VALUES (v_component, v_difference, 'sort_session', p_session_id, v_inventory_id);
 //       END IF;
 //     END IF;
 //   END LOOP;

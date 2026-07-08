@@ -16,11 +16,15 @@ import { getServerClient } from '@/lib/supabase/server'
 // Borrows dropdown will disagree with this guard and borrowing will fail with
 // insufficient_stock even when the UI just claimed there was enough.
 //
+// p_inventory_id scopes the availability sum and both inserts — component
+// names are only unique per inventory now (see api/components/route.ts).
+//
 // CREATE OR REPLACE FUNCTION public.borrow_component(
-//   p_component text,
-//   p_qty       integer,
-//   p_borrower  text,
-//   p_due_at    timestamptz
+//   p_component    text,
+//   p_qty          integer,
+//   p_borrower     text,
+//   p_due_at       timestamptz,
+//   p_inventory_id bigint
 // ) RETURNS uuid LANGUAGE plpgsql AS $$
 // DECLARE
 //   v_available integer;
@@ -30,18 +34,19 @@ import { getServerClient } from '@/lib/supabase/server'
 //   SELECT COALESCE(SUM(delta), 0)
 //   INTO   v_available
 //   FROM   inventory_ledger
-//   WHERE  component = p_component;
+//   WHERE  component = p_component
+//     AND  inventory_id = p_inventory_id;
 //
 //   IF v_available < p_qty THEN
 //     RAISE EXCEPTION 'insufficient_stock';
 //   END IF;
 //
-//   INSERT INTO borrows (component, qty, borrower, due_at)
-//   VALUES (p_component, p_qty, p_borrower, p_due_at)
+//   INSERT INTO borrows (component, qty, borrower, due_at, inventory_id)
+//   VALUES (p_component, p_qty, p_borrower, p_due_at, p_inventory_id)
 //   RETURNING id INTO v_borrow_id;
 //
-//   INSERT INTO inventory_ledger (component, delta, reason)
-//   VALUES (p_component, -p_qty, 'borrow');
+//   INSERT INTO inventory_ledger (component, delta, reason, inventory_id)
+//   VALUES (p_component, -p_qty, 'borrow', p_inventory_id);
 //
 //   RETURN v_borrow_id;
 // END;
@@ -54,6 +59,7 @@ const BorrowSchema = z.object({
   qty: z.number().int().min(1),
   borrower: z.string().min(1),
   due_at: z.string().datetime(),
+  inventory_id: z.number().int().positive(),
 })
 
 export async function POST(req: NextRequest) {
@@ -69,7 +75,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 })
   }
 
-  const { component, qty, borrower, due_at } = parsed.data
+  const { component, qty, borrower, due_at, inventory_id } = parsed.data
   const supabase = getServerClient()
 
   const { data, error } = await supabase.rpc('borrow_component', {
@@ -77,6 +83,7 @@ export async function POST(req: NextRequest) {
     p_qty: qty,
     p_borrower: borrower,
     p_due_at: due_at,
+    p_inventory_id: inventory_id,
   })
 
   if (error) {

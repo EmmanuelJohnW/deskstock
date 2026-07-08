@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { exportReportsPdf, exportReportsExcel } from '@/lib/reports/export'
+import { useInventory } from '@/lib/inventory/context'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ function EmptyRow({ cols, message }: { cols: number; message: string }) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
+  const { selectedInventoryId, loading: inventoryLoading } = useInventory()
   const [inventory,    setInventory]    = useState<InvRow[]>([])
   const [discSessions, setDiscSessions] = useState<DiscrepancySession[]>([])
   const [borrows,      setBorrows]      = useState<BorrowRow[]>([])
@@ -115,7 +117,15 @@ export default function ReportsPage() {
   const [exportError, setExportError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (selectedInventoryId === null) {
+      setInventory([])
+      setDiscSessions([])
+      setBorrows([])
+      setLoading(false)
+      return
+    }
     async function load() {
+      if (selectedInventoryId === null) return
       try {
         const supabase = getSupabaseClient()
         const [
@@ -124,20 +134,23 @@ export default function ReportsPage() {
           { data: sessData,   error: sessErr   },
           { data: borrowData, error: borrowErr },
         ] = await Promise.all([
-          supabase.rpc('get_inventory'),
+          supabase.rpc('get_inventory', { p_inventory_id: selectedInventoryId }),
           supabase
             .from('reconciliations')
             .select('session_id, component, expected, counted, difference')
+            .eq('inventory_id', selectedInventoryId)
             .neq('difference', 0)
             .order('session_id', { ascending: false })
             .order('component',  { ascending: true }),
           supabase
             .from('count_sessions')
             .select('id, finished_at')
-            .eq('status', 'reconciled'),
+            .eq('status', 'reconciled')
+            .eq('inventory_id', selectedInventoryId),
           supabase
             .from('borrows')
             .select('*')
+            .eq('inventory_id', selectedInventoryId)
             .order('taken_at', { ascending: false }),
         ])
 
@@ -176,15 +189,16 @@ export default function ReportsPage() {
       }
     }
     load()
-  }, [])
+  }, [selectedInventoryId])
 
   const loadLedger = useCallback(async (component: string) => {
-    if (!component) { setLedger([]); return }
+    if (!component || selectedInventoryId === null) { setLedger([]); return }
     setLedgerLoading(true)
     const { data, error: err } = await getSupabaseClient()
       .from('inventory_ledger')
       .select('id, component, delta, reason, session_id, created_at')
       .eq('component', component)
+      .eq('inventory_id', selectedInventoryId)
       .order('created_at', { ascending: true })
     setLedgerLoading(false)
     if (err) return
@@ -195,7 +209,7 @@ export default function ReportsPage() {
         return { ...row, running_balance: balance }
       })
     )
-  }, [])
+  }, [selectedInventoryId])
 
   useEffect(() => { loadLedger(selectedComponent) }, [selectedComponent, loadLedger])
 
@@ -221,8 +235,15 @@ export default function ReportsPage() {
     }
   }
 
-  if (loading) {
+  if (inventoryLoading || loading) {
     return <div className="flex-1 flex items-center justify-center text-gray-400">Loading…</div>
+  }
+  if (selectedInventoryId === null) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-gray-400">
+        No inventory selected — create one from the dropdown above.
+      </div>
+    )
   }
   if (error) {
     return <div className="flex-1 p-8 text-red-600">{error}</div>

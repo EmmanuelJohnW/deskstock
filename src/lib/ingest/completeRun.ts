@@ -3,6 +3,20 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { REJECT_BIN_IDX } from '@/lib/device/binLayout'
 
+// ─── Migration SQL — run in Supabase SQL editor ───────────────────────────────
+//
+// runs/bins inherit inventory_id from whichever session is open when the
+// device posts — denormalized here (rather than only joined via session_id)
+// so reporting queries don't need to hop through count_sessions.
+//
+// alter table public.runs add column inventory_id bigint references public.inventories(id);
+// alter table public.bins add column inventory_id bigint references public.inventories(id);
+// -- Backfill existing rows into a default inventory first, then:
+// alter table public.runs alter column inventory_id set not null;
+// alter table public.bins alter column inventory_id set not null;
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const CompleteRunBinSchema = z.object({
   name: z.string().min(1),
   weight_g: z.number().positive(),
@@ -43,10 +57,11 @@ export async function persistCompleteRun(
     return { status: 200, body: { success: true }, summary: 'duplicate run_id' }
   }
 
-  // Every cycle must belong to an open counting session.
+  // Every cycle must belong to an open counting session — its inventory_id
+  // is also how this cycle's data gets scoped to the right lab.
   const { data: session, error: sessionError } = await supabase
     .from('count_sessions')
-    .select('id')
+    .select('id, inventory_id')
     .eq('status', 'open')
     .order('started_at', { ascending: false })
     .limit(1)
@@ -65,12 +80,13 @@ export async function persistCompleteRun(
   const total = data.bins.reduce((acc, b) => acc + b.count, 0)
 
   const { error: runError } = await supabase.from('runs').insert({
-    run_id:      data.run_id,
-    started_at:  data.started_at,
-    duration_ms: data.duration_ms,
+    run_id:       data.run_id,
+    started_at:   data.started_at,
+    duration_ms:  data.duration_ms,
     total,
-    status:      'complete',
-    session_id:  session.id,
+    status:       'complete',
+    session_id:   session.id,
+    inventory_id: session.inventory_id,
   })
   if (runError) {
     console.error('[persistCompleteRun] insert run failed:', runError.message)
@@ -80,10 +96,11 @@ export async function persistCompleteRun(
   // Record individual bin snapshots — bin↔component mapping is cycle-local only.
   const { error: binsError } = await supabase.from('bins').insert(
     data.bins.map(b => ({
-      run_id:    data.run_id,
-      idx:       b.bin,
-      component: b.name,
-      count:     b.count,
+      run_id:       data.run_id,
+      idx:          b.bin,
+      component:    b.name,
+      count:        b.count,
+      inventory_id: session.inventory_id,
     })),
   )
   if (binsError) {

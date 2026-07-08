@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { useInventory } from '@/lib/inventory/context'
 
 // ─── get_inventory — run in Supabase SQL editor ──────────────────────────────
 //
@@ -17,13 +18,18 @@ import { getSupabaseClient } from '@/lib/supabase/client'
 // user there was plenty. Re-running this definition to sum every reason
 // makes both numbers agree.
 //
-// CREATE OR REPLACE FUNCTION public.get_inventory()
+// p_inventory_id scopes the aggregate — component names are only unique per
+// inventory now (see api/components/route.ts), so summing across all
+// inventories would blend unrelated stock together.
+//
+// CREATE OR REPLACE FUNCTION public.get_inventory(p_inventory_id bigint)
 // RETURNS TABLE(component text, qty bigint)
 // LANGUAGE sql
 // STABLE
 // AS $$
 //   SELECT component, SUM(delta) AS qty
 //   FROM   inventory_ledger
+//   WHERE  inventory_id = p_inventory_id
 //   GROUP  BY component
 //   ORDER  BY component;
 // $$;
@@ -70,6 +76,7 @@ function fmtDate(iso: string): string {
 }
 
 export default function InventoryPage() {
+  const { selectedInventoryId, loading: inventoryLoading } = useInventory()
   const [rows, setRows] = useState<InventoryRow[]>([])
   const [componentNames, setComponentNames] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -86,6 +93,12 @@ export default function InventoryPage() {
   const [overrideBorrowId, setOverrideBorrowId] = useState('')
 
   const load = useCallback(async () => {
+    if (selectedInventoryId === null) {
+      setRows([])
+      setComponentNames([])
+      setLoading(false)
+      return
+    }
     try {
       const supabase = getSupabaseClient()
       const [
@@ -93,9 +106,17 @@ export default function InventoryPage() {
         { data: borrows, error: borrowErr },
         { data: catalog, error: catalogErr },
       ] = await Promise.all([
-        supabase.rpc('get_inventory'),
-        supabase.from('borrows').select('component, qty').is('returned_at', null),
-        supabase.from('components').select('name').order('name', { ascending: true }),
+        supabase.rpc('get_inventory', { p_inventory_id: selectedInventoryId }),
+        supabase
+          .from('borrows')
+          .select('component, qty')
+          .eq('inventory_id', selectedInventoryId)
+          .is('returned_at', null),
+        supabase
+          .from('components')
+          .select('name')
+          .eq('inventory_id', selectedInventoryId)
+          .order('name', { ascending: true }),
       ])
 
       if (invErr)     throw new Error(invErr.message)
@@ -119,7 +140,7 @@ export default function InventoryPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selectedInventoryId])
 
   useEffect(() => {
     load()
@@ -127,7 +148,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     setOverrideBorrowId('')
-    if (!addForm.component) {
+    if (!addForm.component || selectedInventoryId === null) {
       setOpenBorrows([])
       return
     }
@@ -136,16 +157,18 @@ export default function InventoryPage() {
       .from('borrows')
       .select('id, borrower, qty, taken_at')
       .eq('component', addForm.component)
+      .eq('inventory_id', selectedInventoryId)
       .is('returned_at', null)
       .order('taken_at', { ascending: true })
       .then(({ data }) => {
         if (!cancelled) setOpenBorrows((data ?? []) as unknown as OpenBorrowRow[])
       })
     return () => { cancelled = true }
-  }, [addForm.component])
+  }, [addForm.component, selectedInventoryId])
 
   async function handleAddStock(e: React.FormEvent) {
     e.preventDefault()
+    if (selectedInventoryId === null) return
     setSubmitting(true)
     setAddError(null)
     setClosedBorrows(null)
@@ -156,6 +179,7 @@ export default function InventoryPage() {
         body: JSON.stringify({
           component: addForm.component,
           qty: Number(addForm.qty),
+          inventory_id: selectedInventoryId,
           ...(overrideBorrowId ? { borrow_id: overrideBorrowId } : {}),
         }),
       })
@@ -202,8 +226,16 @@ export default function InventoryPage() {
     return sortDir === 'asc' ? cmp : -cmp
   })
 
-  if (loading) {
+  if (inventoryLoading || loading) {
     return <div className="flex-1 flex items-center justify-center text-gray-400">Loading…</div>
+  }
+
+  if (selectedInventoryId === null) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-gray-400">
+        No inventory selected — create one from the dropdown above.
+      </div>
+    )
   }
 
   if (loadError) {

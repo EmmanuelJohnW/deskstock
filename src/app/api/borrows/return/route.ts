@@ -8,15 +8,19 @@ import { getServerClient } from '@/lib/supabase/server'
 // Marks the borrow returned and writes a 'return' ledger entry atomically.
 // The already_returned guard is preserved.
 //
+// No p_inventory_id parameter needed — the borrow row itself already pins
+// which inventory it belongs to, so the ledger entry inherits it from there.
+//
 // CREATE OR REPLACE FUNCTION public.return_borrow(p_borrow_id uuid)
 // RETURNS void LANGUAGE plpgsql AS $$
 // DECLARE
 //   v_component   text;
 //   v_qty         integer;
 //   v_returned_at timestamptz;
+//   v_inventory_id bigint;
 // BEGIN
-//   SELECT component, qty, returned_at
-//   INTO   v_component, v_qty, v_returned_at
+//   SELECT component, qty, returned_at, inventory_id
+//   INTO   v_component, v_qty, v_returned_at, v_inventory_id
 //   FROM   borrows
 //   WHERE  id = p_borrow_id;
 //
@@ -32,8 +36,8 @@ import { getServerClient } from '@/lib/supabase/server'
 //   SET    returned_at = now()
 //   WHERE  id = p_borrow_id;
 //
-//   INSERT INTO inventory_ledger (component, delta, reason)
-//   VALUES (v_component, v_qty, 'return');
+//   INSERT INTO inventory_ledger (component, delta, reason, inventory_id)
+//   VALUES (v_component, v_qty, 'return', v_inventory_id);
 // END;
 // $$;
 //

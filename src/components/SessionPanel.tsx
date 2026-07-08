@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { useInventory } from '@/lib/inventory/context'
 
 // No frontend previously called POST /api/sessions or /api/sessions/[id]/finish —
 // /api/ingest's "complete" handler 409s with no_open_session without one open,
@@ -12,6 +13,7 @@ interface OpenSession {
   id: number
   operator: string | null
   started_at: string
+  inventory_id: number
 }
 
 interface Discrepancy {
@@ -39,6 +41,7 @@ const INPUT_CLS =
   'bg-white border border-gray-300 rounded px-3 py-1.5 text-gray-900 text-xs focus:outline-none focus:border-emerald-500'
 
 export function SessionPanel() {
+  const { inventories, selectedInventoryId } = useInventory()
   // undefined = still checking; null = no open session
   const [session, setSession] = useState<OpenSession | null | undefined>(undefined)
   const [operator, setOperator] = useState('')
@@ -50,7 +53,7 @@ export function SessionPanel() {
   const refresh = useCallback(async () => {
     const { data } = await getSupabaseClient()
       .from('count_sessions')
-      .select('id, operator, started_at')
+      .select('id, operator, started_at, inventory_id')
       .eq('status', 'open')
       .maybeSingle()
     setSession((data as OpenSession | null) ?? null)
@@ -62,6 +65,7 @@ export function SessionPanel() {
 
   async function handleStart(e: React.FormEvent) {
     e.preventDefault()
+    if (selectedInventoryId === null) return
     setStarting(true)
     setError(null)
     setResult(null)
@@ -69,7 +73,10 @@ export function SessionPanel() {
       const res = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(operator.trim() ? { operator: operator.trim() } : {}),
+        body: JSON.stringify({
+          inventory_id: selectedInventoryId,
+          ...(operator.trim() ? { operator: operator.trim() } : {}),
+        }),
       })
       const body = (await res.json()) as { success: boolean; error?: string }
       // session_already_open just means another tab beat us to it — refresh picks it up.
@@ -115,6 +122,11 @@ export function SessionPanel() {
     return <div className="px-4 sm:px-6 py-2 text-xs text-gray-400">Checking count session…</div>
   }
 
+  const sessionInventoryName = session
+    ? inventories.find(inv => inv.id === session.inventory_id)?.name
+    : undefined
+  const sessionMatchesSelection = session ? session.inventory_id === selectedInventoryId : true
+
   return (
     <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-white/60">
       {session ? (
@@ -122,8 +134,14 @@ export function SessionPanel() {
           <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
           <span className="text-sm text-gray-900 font-medium">Count session #{session.id} open</span>
           <span className="text-xs text-gray-400">
+            {sessionInventoryName ? `${sessionInventoryName} · ` : ''}
             {session.operator ? `${session.operator} · ` : ''}started {timeAgo(session.started_at)}
           </span>
+          {!sessionMatchesSelection && (
+            <span className="text-xs text-amber-600">
+              (open for a different inventory than the one selected)
+            </span>
+          )}
           <button
             onClick={handleFinish}
             disabled={finishing}
@@ -144,7 +162,7 @@ export function SessionPanel() {
           />
           <button
             type="submit"
-            disabled={starting}
+            disabled={starting || selectedInventoryId === null}
             className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
           >
             {starting ? 'Starting…' : 'Start Count Session'}

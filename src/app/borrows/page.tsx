@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { useInventory } from '@/lib/inventory/context'
 
 interface Borrow {
   id: string
@@ -36,6 +37,7 @@ const INPUT_CLS =
   'bg-white border border-gray-300 rounded px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-emerald-500'
 
 export default function BorrowsPage() {
+  const { selectedInventoryId, loading: inventoryLoading } = useInventory()
   const [borrows, setBorrows] = useState<Borrow[]>([])
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,15 +49,25 @@ export default function BorrowsPage() {
   const [showHistory, setShowHistory] = useState(false)
 
   const load = useCallback(async () => {
+    if (selectedInventoryId === null) {
+      setBorrows([])
+      setInventory([])
+      setLoading(false)
+      return
+    }
     const supabase = getSupabaseClient()
     const [{ data: borrowData }, { data: invData }] = await Promise.all([
-      supabase.from('borrows').select('*').order('taken_at', { ascending: false }),
-      supabase.rpc('get_inventory'),
+      supabase
+        .from('borrows')
+        .select('*')
+        .eq('inventory_id', selectedInventoryId)
+        .order('taken_at', { ascending: false }),
+      supabase.rpc('get_inventory', { p_inventory_id: selectedInventoryId }),
     ])
     setBorrows((borrowData ?? []) as unknown as Borrow[])
     setInventory((invData ?? []) as unknown as InventoryItem[])
     setLoading(false)
-  }, [])
+  }, [selectedInventoryId])
 
   useEffect(() => {
     load()
@@ -63,6 +75,7 @@ export default function BorrowsPage() {
 
   async function handleBorrow(e: React.FormEvent) {
     e.preventDefault()
+    if (selectedInventoryId === null) return
     setSubmitting(true)
     setFormError(null)
     try {
@@ -74,6 +87,7 @@ export default function BorrowsPage() {
           qty: Number(form.qty),
           borrower: form.borrower,
           due_at: new Date(`${form.due_at}T23:59:59`).toISOString(),
+          inventory_id: selectedInventoryId,
         }),
       })
       if (!res.ok) {
@@ -131,8 +145,16 @@ export default function BorrowsPage() {
   const open = borrows.filter(b => !b.returned_at)
   const returned = borrows.filter(b => b.returned_at)
 
-  if (loading) {
+  if (inventoryLoading || loading) {
     return <div className="flex-1 flex items-center justify-center text-gray-400">Loading…</div>
+  }
+
+  if (selectedInventoryId === null) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-gray-400">
+        No inventory selected — create one from the dropdown above.
+      </div>
+    )
   }
 
   return (

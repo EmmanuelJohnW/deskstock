@@ -9,13 +9,16 @@ import { logDeviceCall } from '@/lib/deviceLog'
 //
 // The device has no concept of "which inventory" — it just holds a bearer
 // token and calls this endpoint at the start of every run (see
-// firmware/deskstock/deskstock.ino's startRun() → fetchRunConfig()). The
-// operator always opens a count session from the dashboard, inventory
-// picked via the NavBar dropdown, before walking over and pressing the
-// physical run button — so the currently-open session's inventory_id is
-// the only signal this endpoint needs. Returning every inventory's
-// components unfiltered would let two labs' catalogs collide in the
-// firmware's weight table and misclassify parts into the wrong bin.
+// firmware/deskstock/deskstock.ino's startRun() → fetchRunConfig()). Rather
+// than requiring the operator to manually open a count session from the
+// dashboard first, this reads active_inventory (set automatically whenever
+// the NavBar dropdown selection changes — see api/active-inventory/route.ts)
+// and auto-opens a session for it if none is open yet, marking it
+// auto_opened so persistCompleteRun knows to auto-reconcile it when the run
+// finishes (see lib/ingest/completeRun.ts) — one press of the physical
+// button, no manual session management. A session opened manually from the
+// dashboard (auto_opened = false) still behaves as before: it can batch
+// multiple runs and is only closed by an explicit "Finish Count".
 export async function GET(req: NextRequest) {
   const supabase = getServerClient()
 
@@ -25,7 +28,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: session, error: sessionError } = await supabase
+  const { data: existing, error: sessionError } = await supabase
     .from('count_sessions')
     .select('inventory_id')
     .eq('status', 'open')
@@ -39,15 +42,45 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: sessionError.message }, { status: 500 })
   }
 
-  if (!session) {
-    await logDeviceCall(supabase, { method: 'GET', endpoint: '/api/run-config', statusCode: 409, summary: 'no open session' })
-    return NextResponse.json({ success: false, error: 'no_open_session' }, { status: 409 })
+  let inventoryId: number
+
+  if (existing) {
+    inventoryId = existing.inventory_id
+  } else {
+    const { data: active, error: activeError } = await supabase
+      .from('active_inventory')
+      .select('inventory_id')
+      .eq('id', 1)
+      .maybeSingle()
+
+    if (activeError) {
+      console.error('[GET /api/run-config] active_inventory lookup failed:', activeError.message)
+      await logDeviceCall(supabase, { method: 'GET', endpoint: '/api/run-config', statusCode: 500, summary: 'active_inventory lookup failed' })
+      return NextResponse.json({ success: false, error: activeError.message }, { status: 500 })
+    }
+
+    if (!active?.inventory_id) {
+      await logDeviceCall(supabase, { method: 'GET', endpoint: '/api/run-config', statusCode: 409, summary: 'no active inventory selected' })
+      return NextResponse.json({ success: false, error: 'no_active_inventory' }, { status: 409 })
+    }
+
+    const { error: openError } = await supabase
+      .from('count_sessions')
+      .insert({ inventory_id: active.inventory_id, auto_opened: true })
+
+    if (openError) {
+      console.error('[GET /api/run-config] auto-open session failed:', openError.message)
+      await logDeviceCall(supabase, { method: 'GET', endpoint: '/api/run-config', statusCode: 500, summary: 'auto-open session failed' })
+      return NextResponse.json({ success: false, error: openError.message }, { status: 500 })
+    }
+
+    inventoryId = active.inventory_id
   }
 
   const { data, error } = await supabase
     .from('components')
     .select('name, weight_g')
-    .eq('inventory_id', session.inventory_id)
+    .eq('inventory_id', inventoryId)
     .order('name', { ascending: true })
 
   if (error) {

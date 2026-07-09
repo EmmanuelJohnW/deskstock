@@ -142,5 +142,15 @@ export async function persistCompleteRun(
     console.error('[persistCompleteRun] delete live_runs failed:', delError.message)
   }
 
+  // Every completed run auto-reconciles and closes its own session — device
+  // or manually started, it doesn't matter; nobody has to remember to click
+  // "Finish Count". Non-fatal on failure: the run and tally are already
+  // durably persisted either way; the operator can still finish it by hand
+  // from the dashboard if this fails.
+  const { error: reconcileError } = await supabase.rpc('reconcile_session', { p_session_id: session.id })
+  if (reconcileError) {
+    console.error('[persistCompleteRun] auto-reconcile failed:', reconcileError.message)
+  }
+
   return { status: 201, body: { success: true }, summary: 'complete' }
 }

@@ -59,6 +59,24 @@ export function InventoryProvider({ children }: InventoryProviderProps) {
     refresh()
   }, [refresh])
 
+  // Push the current selection to the server as the device's active
+  // inventory — this is what lets /api/run-config auto-open a session for
+  // the right lab when the physical device is started, with no manual
+  // "Start Count Session" click. Fires on manual switches and on the
+  // initial auto-pick alike, so the device always has *some* active
+  // inventory as soon as the dashboard has loaded one.
+  useEffect(() => {
+    if (selectedInventoryId === null) return
+    fetch('/api/active-inventory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inventory_id: selectedInventoryId }),
+    }).catch(() => {
+      // Best-effort — a failed sync here just means the device falls back to
+      // whatever active inventory was last set, or 409s with no_active_inventory.
+    })
+  }, [selectedInventoryId])
+
   function selectInventory(id: number) {
     setSelectedInventoryIdState(id)
     window.localStorage.setItem(STORAGE_KEY, String(id))

@@ -75,13 +75,14 @@ function dailyUsage(component, perDay, days) {
   return Array.from({ length: days }, (_, i) => consumedBorrow(component, perDay, days - i - 0.5))
 }
 
+// Requires the components.consumable column (see api/components/route.ts).
 const COMPONENTS = [
-  { name: 'Resistor 10kΩ', weight_g: 0.24 },
-  { name: 'Jumper wire', weight_g: 0.5 },
-  { name: 'LED Red', weight_g: 0.09 },
-  { name: 'Capacitor 100nF', weight_g: 0.06 },
-  { name: 'Multimeter', weight_g: 250 },
-  { name: 'Arduino Uno', weight_g: 25 },
+  { name: 'Resistor 10kΩ', weight_g: 0.24, consumable: true },
+  { name: 'Jumper wire', weight_g: 0.5, consumable: true },
+  { name: 'LED Red', weight_g: 0.09, consumable: true },
+  { name: 'Capacitor 100nF', weight_g: 0.06, consumable: true },
+  { name: 'Multimeter', weight_g: 250, consumable: false },
+  { name: 'Arduino Uno', weight_g: 25, consumable: false },
 ]
 
 const SCENARIOS = [

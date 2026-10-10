@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { formatDays, formatRate } from './format'
+import { describeAlert, formatDays, formatRate } from './format'
 
 describe('formatDays', () => {
   test('under a day reads as less than one day', () => {
@@ -27,5 +27,19 @@ describe('formatRate', () => {
 
   test('larger rates are whole numbers', () => {
     expect(formatRate(10.4)).toBe('10 pcs')
+  })
+})
+
+describe('describeAlert', () => {
+  test('out of stock reads as out of stock', () => {
+    expect(describeAlert({ status: 'out_of_stock', daysRemaining: 0 })).toBe('out of stock')
+  })
+
+  test('otherwise shows days left', () => {
+    expect(describeAlert({ status: 'monitor', daysRemaining: 5 })).toBe('5 days left')
+  })
+
+  test('missing days falls back to the status label', () => {
+    expect(describeAlert({ status: 'critical', daysRemaining: null })).toBe('critical')
   })
 })

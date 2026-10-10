@@ -8,10 +8,12 @@ interface ComponentRow {
   id: number
   name: string
   weight_g: number
+  /** Used up rather than returned (resistors, wire). Absent before the migration. */
+  consumable?: boolean
   created_at: string
 }
 
-const EMPTY_FORM = { name: '', weight_g: '' }
+const EMPTY_FORM = { name: '', weight_g: '', consumable: false }
 
 const INPUT_CLS =
   'bg-white border border-gray-300 rounded px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-emerald-500'
@@ -45,7 +47,7 @@ export default function ComponentsPage() {
 
   function startEdit(c: ComponentRow) {
     setEditing(c)
-    setForm({ name: c.name, weight_g: String(c.weight_g) })
+    setForm({ name: c.name, weight_g: String(c.weight_g), consumable: c.consumable === true })
     setFormError(null)
   }
 
@@ -64,6 +66,7 @@ export default function ComponentsPage() {
     const payload = {
       name: form.name.trim(),
       weight_g: parseFloat(form.weight_g),
+      consumable: form.consumable,
       inventory_id: selectedInventoryId,
       ...(editing ? { id: editing.id } : {}),
     }
@@ -157,6 +160,16 @@ export default function ComponentsPage() {
             />
           </div>
 
+          <label className="flex items-center gap-2 py-2 text-sm text-gray-700" title="Used up rather than returned, e.g. resistors or wire. Restocks won't be matched against open loans, and every borrow counts as usage in the forecast.">
+            <input
+              type="checkbox"
+              checked={form.consumable}
+              onChange={e => setForm(f => ({ ...f, consumable: e.target.checked }))}
+              className="h-4 w-4 accent-emerald-600"
+            />
+            Consumable
+          </label>
+
           <div className="flex gap-2">
             <button
               type="submit"
@@ -192,7 +205,7 @@ export default function ComponentsPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left">
               <tr>
-                {['Name', 'Weight (g)', ''].map(h => (
+                {['Name', 'Weight (g)', 'Type', ''].map(h => (
                   <th key={h} className="px-4 py-3 text-gray-500 font-medium">{h}</th>
                 ))}
               </tr>
@@ -200,7 +213,7 @@ export default function ComponentsPage() {
             <tbody className="divide-y divide-gray-200">
               {components.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
                     No components registered yet.
                   </td>
                 </tr>
@@ -214,6 +227,7 @@ export default function ComponentsPage() {
                     <td className="px-4 py-3 tabular-nums text-gray-700 font-mono">
                       {Number(c.weight_g).toFixed(3)}
                     </td>
+                    <td className="px-4 py-3 text-gray-600">{c.consumable ? 'Consumable' : 'Returnable'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button

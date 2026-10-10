@@ -1,4 +1,4 @@
-import type { ForecastStatus } from './types'
+import type { ComponentForecast, ForecastStatus } from './types'
 
 export const STATUS_LABEL: Record<ForecastStatus, string> = {
   out_of_stock: 'Out of stock',
@@ -24,4 +24,11 @@ export function formatRate(perDay: number): string {
 
 export function formatDate(date: Date): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+/** Short phrase for alert banners: "out of stock", "5 days left". */
+export function describeAlert(forecast: Pick<ComponentForecast, 'status' | 'daysRemaining'>): string {
+  if (forecast.status === 'out_of_stock') return 'out of stock'
+  if (forecast.daysRemaining === null) return STATUS_LABEL[forecast.status].toLowerCase()
+  return `${formatDays(forecast.daysRemaining)} left`
 }

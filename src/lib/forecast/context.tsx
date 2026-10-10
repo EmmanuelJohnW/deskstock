@@ -18,6 +18,9 @@ interface ForecastContextValue {
   refresh: () => Promise<void>
 }
 
+// Postgres "undefined column": the consumable migration hasn't been run yet.
+const UNDEFINED_COLUMN = '42703'
+
 const ForecastContext = createContext<ForecastContextValue | null>(null)
 
 async function fetchLedger(inventoryId: number): Promise<LedgerEntry[]> {
@@ -41,6 +44,17 @@ async function fetchStock(inventoryId: number): Promise<Record<string, number>> 
   if (error) throw new Error(error.message)
   const rows = (data ?? []) as { component: string; qty: number }[]
   return Object.fromEntries(rows.map(r => [r.component, Number(r.qty)]))
+}
+
+async function fetchConsumables(inventoryId: number): Promise<Set<string>> {
+  const { data, error } = await getSupabaseClient()
+    .from('components')
+    .select('name')
+    .eq('inventory_id', inventoryId)
+    .eq('consumable', true)
+  if (error?.code === UNDEFINED_COLUMN) return new Set()
+  if (error) throw new Error(error.message)
+  return new Set(((data ?? []) as { name: string }[]).map(r => r.name))
 }
 
 interface ForecastProviderProps {
@@ -74,9 +88,13 @@ export function ForecastProvider({ children }: ForecastProviderProps) {
       return
     }
     try {
-      const [ledger, stock] = await Promise.all([fetchLedger(selectedInventoryId), fetchStock(selectedInventoryId)])
+      const [ledger, stock, consumables] = await Promise.all([
+        fetchLedger(selectedInventoryId),
+        fetchStock(selectedInventoryId),
+        fetchConsumables(selectedInventoryId),
+      ])
       if (!isCurrent()) return
-      setForecasts(computeForecasts(ledger, stock, new Date()))
+      setForecasts(computeForecasts(ledger, stock, new Date(), {}, consumables))
       setError(null)
     } catch (err: unknown) {
       if (!isCurrent()) return

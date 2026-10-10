@@ -325,3 +325,58 @@ describe('alerts', () => {
     expect(countAlerts(forecasts)).toBe(1)
   })
 })
+
+describe('computeForecasts — consumables', () => {
+  const CONSUMABLES = new Set(['Wire'])
+
+  test('returns do not reduce usage for a consumable', () => {
+    // Arrange: restocking through Add Stock records "returns" against old loans.
+    const entries = [
+      entry('Wire', 100, 'baseline', 60),
+      ...Array.from({ length: 30 }, (_, i) => entry('Wire', -2, 'borrow', i + 0.5)),
+      entry('Wire', 30, 'return', 1),
+    ]
+
+    // Act
+    const [f] = computeForecasts(entries, { Wire: 70 }, NOW, {}, CONSUMABLES)
+
+    // Assert
+    expect(f.usageInWindow).toBe(60)
+    expect(f.avgDailyUsage).toBeCloseTo(2)
+    expect(f.isConsumable).toBe(true)
+  })
+
+  test('return reversals do not add usage for a consumable', () => {
+    const entries = [
+      entry('Wire', 100, 'baseline', 60),
+      entry('Wire', -10, 'borrow', 10),
+      entry('Wire', 10, 'return', 9),
+      entry('Wire', -10, 'return_reversal', 8),
+    ]
+
+    const [f] = computeForecasts(entries, { Wire: 90 }, NOW, {}, CONSUMABLES)
+
+    expect(f.usageInWindow).toBe(10)
+  })
+
+  test('shortfalls still count for a consumable', () => {
+    const entries = [entry('Wire', 100, 'baseline', 60), entry('Wire', -7, 'sort_session', 3)]
+
+    const [f] = computeForecasts(entries, { Wire: 93 }, NOW, {}, CONSUMABLES)
+
+    expect(f.usageInWindow).toBe(7)
+  })
+
+  test('components not in the consumable set keep netting returns', () => {
+    const entries = [
+      entry('Meter', 10, 'baseline', 60),
+      entry('Meter', -2, 'borrow', 10),
+      entry('Meter', 2, 'return', 9),
+    ]
+
+    const [f] = computeForecasts(entries, { Meter: 10 }, NOW, {}, CONSUMABLES)
+
+    expect(f.usageInWindow).toBe(0)
+    expect(f.isConsumable).toBe(false)
+  })
+})

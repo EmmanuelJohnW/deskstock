@@ -21,12 +21,21 @@ import { getServerClient } from '@/lib/supabase/server'
 // alter table public.components add constraint components_inventory_id_name_key
 //   unique (inventory_id, name);
 //
+// Consumable flag — parts that get used up (resistors, wire) rather than
+// returned (meters, boards). Add Stock records consumable restocks as new
+// stock instead of matching them against open loans, and the forecast counts
+// every consumable borrow as usage.
+//
+// alter table public.components
+//   add column consumable boolean not null default false;
+//
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ComponentFields = z.object({
   name: z.string().min(1),
   weight_g: z.number().positive(),
   inventory_id: z.number().int().positive(),
+  consumable: z.boolean().optional(),
 })
 
 const CreateSchema = ComponentFields

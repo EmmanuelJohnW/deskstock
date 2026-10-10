@@ -50,6 +50,8 @@ interface ForecastProviderProps {
 /**
  * Loads stockout forecasts for the inventory selected in the nav dropdown,
  * once, for everything below it (nav badge and Forecast page share it).
+ * inventory_ledger has no realtime feed, so anything that changes stock
+ * should call `refresh()` from useForecasts() afterwards.
  */
 export function ForecastProvider({ children }: ForecastProviderProps) {
   const { selectedInventoryId } = useInventory()
@@ -90,8 +92,15 @@ export function ForecastProvider({ children }: ForecastProviderProps) {
     setForecasts([])
     refresh()
     const timer = setInterval(refresh, REFRESH_INTERVAL_MS)
+    // Stock can change elsewhere (device runs, other users); catch up when
+    // the user returns to this tab.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
       latestRequest.current += 1 // invalidate any load still in flight
     }
   }, [refresh])

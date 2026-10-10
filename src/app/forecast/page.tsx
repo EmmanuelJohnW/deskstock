@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { ForecastCard } from '@/components/forecast/ForecastCard'
 import { StatusBadge } from '@/components/forecast/StatusBadge'
 import {
@@ -80,7 +81,12 @@ function HowItWorks() {
 
 export default function ForecastPage() {
   const { selectedInventoryId, loading: inventoryLoading } = useInventory()
-  const { forecasts, loading, error } = useForecasts()
+  const { forecasts, loading, error, refresh } = useForecasts()
+
+  // Always show fresh numbers when the page is opened.
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   if (inventoryLoading || loading) {
     return <div className="flex-1 flex items-center justify-center text-gray-400">Loading…</div>

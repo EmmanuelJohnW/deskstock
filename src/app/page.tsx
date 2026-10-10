@@ -1,13 +1,26 @@
 'use client'
 
+import { useEffect } from 'react'
+import { useForecasts } from '@/lib/forecast/context'
 import { useDevice } from '@/lib/device/useDevice'
 import { ArchBinMap } from '@/components/ArchBinMap'
 import { StatusBar } from '@/components/StatusBar'
 import { TelemetryBar } from '@/components/TelemetryBar'
 import { SessionPanel } from '@/components/SessionPanel'
 
+// The live view flips to "complete" when the run is persisted; reconciliation
+// finishes just after, so give it a moment before reloading forecasts.
+const RUN_SETTLE_MS = 3000
+
 export default function DashboardPage() {
   const device = useDevice()
+  const { refresh: refreshForecasts } = useForecasts()
+
+  useEffect(() => {
+    if (device.runStatus !== 'complete') return
+    const timer = setTimeout(refreshForecasts, RUN_SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [device.runStatus, device.runId, refreshForecasts])
 
   const isRunning = device.runStatus === 'running'
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { useInventory } from '@/lib/inventory/context'
+import { useForecasts } from '@/lib/forecast/context'
 
 // No frontend previously called POST /api/sessions or /api/sessions/[id]/finish —
 // /api/ingest's "complete" handler 409s with no_open_session without one open,
@@ -42,6 +43,7 @@ const INPUT_CLS =
 
 export function SessionPanel() {
   const { inventories, selectedInventoryId } = useInventory()
+  const { refresh: refreshForecasts } = useForecasts()
   // undefined = still checking; null = no open session
   const [session, setSession] = useState<OpenSession | null | undefined>(undefined)
   const [operator, setOperator] = useState('')
@@ -110,7 +112,7 @@ export function SessionPanel() {
         return
       }
       setResult({ discrepancy_count: body.discrepancy_count ?? 0, discrepancies: body.discrepancies ?? [] })
-      await refresh()
+      await Promise.all([refresh(), refreshForecasts()])
     } catch {
       setError('Network error')
     } finally {

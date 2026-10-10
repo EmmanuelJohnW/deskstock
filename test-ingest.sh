@@ -1,74 +1,94 @@
 #!/usr/bin/env bash
 #
-# test-ingest.sh — simulate a full ESP32 sort run against /api/ingest
+# test-ingest.sh — simulate a full ESP32 sort run against the live API
+#
+# Mirrors what the device does:
+#   1. GET  /api/run-config  → component table for the active inventory
+#                              (auto-opens a count session if none is open)
+#   2. POST /api/ingest      → status:"running" ticks with cumulative bin counts
+#   3. POST /api/ingest      → status:"complete" (persists the run, then
+#                              auto-reconciles and closes the session)
+#
+# Bin shape (see CompleteRunBinSchema in src/lib/ingest/completeRun.ts):
+#   {name, weight_g, bin, count} — bin 0 is the reject chute ("Unknown").
 #
 # Usage:
-#   1. Edit URL and TOKEN below (or pass as env vars).
-#   2. chmod +x test-ingest.sh
-#   3. Open your deployed dashboard in a browser, then run: ./test-ingest.sh
+#   INGEST_TOKEN=... ./test-ingest.sh
+#   INGEST_URL=http://localhost:3000 INGEST_TOKEN=... ./test-ingest.sh
 #
-# Watch the bins animate live as the running ticks POST, then persist + clear
-# when the complete tick fires.
+# NOTE: this writes real data. Completed counts replace stock levels for the
+# active inventory — point the dashboard at a test inventory first.
 
 set -euo pipefail
 
-# ── config ────────────────────────────────────────────────────────────────────
-URL="${INGEST_URL:-https://deskstock.vercel.app/api/ingest}"
-TOKEN="${INGEST_TOKEN:-b684f4dce72fa261ee925445d3429190421c1215d5de7deaa3f5ccfad73f576f}"
-RUN_ID="test-$(date +%s)"      # unique each run so it persists, not skipped
-TICK_DELAY=1                   # seconds between running ticks (matches ~1Hz device)
+BASE_URL="${INGEST_URL:-https://deskstock.vercel.app}"
+TOKEN="${INGEST_TOKEN:?Set INGEST_TOKEN (copy it from Vercel environment variables)}"
+RUN_ID="test-$(date +%s)"   # unique each run so it persists, not skipped as a duplicate
+TICKS=3                     # running ticks before complete
+PER_TICK=2                  # items added to each bin per tick
+TICK_DELAY=2                # seconds between ticks
+MAX_COMPONENT_BINS=5        # bins 1..5; bin 0 is the reject chute
+REJECT_WEIGHT_G=1           # server requires weight_g > 0; unused for the reject chute
 
-# 7 bins; last one (idx 6) is the reject. counts grow each tick.
-COMPONENTS=("10kΩ" "100nF" "LED Red" "ATtiny85" "1N4148" "10µH" "HC-SR04")
+echo "Target: $BASE_URL"
+echo "Run ID: $RUN_ID"
+
+# ── 1. run-config ─────────────────────────────────────────────────────────────
+config=$(curl -sS -w '\n%{http_code}' -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/run-config")
+config_status=${config##*$'\n'}
+config_body=${config%$'\n'*}
+if [ "$config_status" != "200" ]; then
+  echo "run-config failed (HTTP $config_status): $config_body" >&2
+  exit 1
+fi
+
+# Build bins_json() from the component table: reject chute + up to 5 components.
+components=$(python3 -c '
+import json, sys
+rows = json.loads(sys.argv[1])
+max_bins = int(sys.argv[2])
+for i, r in enumerate(rows[:max_bins], start=1):
+    print("%d\t%s\t%s" % (i, r["weight_g"], r["name"]))
+' "$config_body" "$MAX_COMPONENT_BINS")
+
+if [ -z "$components" ]; then
+  echo "Active inventory has no registered components — add some on /components first." >&2
+  exit 1
+fi
+echo "Components:"
+echo "$components" | sed 's/^/  bin /'
+
+bins_json() {
+  python3 -c '
+import json, sys
+count = int(sys.argv[1])
+bins = [{"name": "Unknown", "weight_g": float(sys.argv[2]), "bin": 0, "count": count // 2}]
+for line in sys.argv[3].splitlines():
+    idx, weight, name = line.split("\t", 2)
+    bins.append({"name": name, "weight_g": float(weight), "bin": int(idx), "count": count})
+print(json.dumps(bins))
+' "$1" "$REJECT_WEIGHT_G" "$components"
+}
 
 post() {
-  curl -s -o /dev/null -w "  → HTTP %{http_code}\n" \
-    -X POST "$URL" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "$1"
+  curl -sS -o /dev/null -w "  → HTTP %{http_code}\n" -X POST "$BASE_URL/api/ingest" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$1"
 }
 
-# build the bins JSON array for a given multiplier (counts = step * per-bin rate)
-build_bins() {
-  local step=$1
-  local arr="["
-  local rates=(5 5 5 5 5 5 2)   # reject accrues slower
-  for i in "${!COMPONENTS[@]}"; do
-    local count=$(( step * rates[i] ))
-    [ "$i" -gt 0 ] && arr+=","
-    arr+="{\"idx\":$i,\"component\":\"${COMPONENTS[$i]}\",\"count\":$count}"
-  done
-  arr+="]"
-  echo "$arr"
-}
-
-echo "Run ID: $RUN_ID"
-echo "Target: $URL"
-echo "Open your dashboard now. Starting in 2s..."
-sleep 2
-
-# ── running ticks (6 ticks, counts climbing) ─────────────────────────────────
-TOTAL_STEPS=6
-for step in $(seq 1 $TOTAL_STEPS); do
-  elapsed=$(( step * 1000 ))
-  remaining=$(( (TOTAL_STEPS - step) * 1000 ))
-  bins=$(build_bins "$step")
-  echo "Tick $step/$TOTAL_STEPS (elapsed ${elapsed}ms)"
-  post "{\"run_id\":\"$RUN_ID\",\"status\":\"running\",\"profile\":\"Mixed Components\",\"elapsed_ms\":$elapsed,\"est_remaining_ms\":$remaining,\"bins\":$bins}"
+# ── 2. running ticks ──────────────────────────────────────────────────────────
+for step in $(seq 1 "$TICKS"); do
+  echo "Tick $step/$TICKS"
+  post "{\"run_id\":\"$RUN_ID\",\"status\":\"running\",\"elapsed_ms\":$((step * TICK_DELAY * 1000)),\"est_remaining_ms\":$(((TICKS - step) * TICK_DELAY * 1000)),\"bins\":$(bins_json $((step * PER_TICK)))}"
   sleep "$TICK_DELAY"
 done
 
-# ── complete tick (final counts, total must equal bin sum) ────────────────────
-final_bins=$(build_bins "$TOTAL_STEPS")
-# total = sum of all bin counts: 6 bins * (6*5) + 1 reject * (6*2) = 180 + 12 = 192
-total=$(( 6 * (TOTAL_STEPS * 5) + (TOTAL_STEPS * 2) ))
-duration=$(( TOTAL_STEPS * 1000 ))
-started="$(date -u -v-${duration}S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-echo "Complete (total=$total)"
-post "{\"run_id\":\"$RUN_ID\",\"status\":\"complete\",\"profile\":\"Mixed Components\",\"total\":$total,\"duration_ms\":$duration,\"started_at\":\"$started\",\"bins\":$final_bins}"
+# ── 3. complete ───────────────────────────────────────────────────────────────
+duration_s=$((TICKS * TICK_DELAY))
+started_at=$(date -u -v-"${duration_s}"S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+  || date -u -d "-${duration_s} seconds" +%Y-%m-%dT%H:%M:%SZ)
+echo "Complete"
+post "{\"run_id\":\"$RUN_ID\",\"status\":\"complete\",\"duration_ms\":$((duration_s * 1000)),\"started_at\":\"$started_at\",\"bins\":$(bins_json $((TICKS * PER_TICK)))}"
 
 echo
-echo "Done. The dashboard should show the completed ring, and the run should now"
-echo "exist in your runs/bins tables with inventory incremented (reject excluded)."
+echo "Done. Each component bin should now read $((TICKS * PER_TICK)) in the active inventory"
+echo "(reject chute excluded), and the count session should be closed."

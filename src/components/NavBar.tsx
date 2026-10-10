@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { InventorySelector } from '@/components/InventorySelector'
+import { ForecastAlertBadge } from '@/components/forecast/ForecastAlertBadge'
 
 interface NavItem {
   href: string
@@ -12,6 +13,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Sort' },
   { href: '/inventory', label: 'Inventory' },
+  { href: '/forecast', label: 'Forecast' },
   { href: '/borrows', label: 'Borrows' },
   { href: '/components', label: 'Components' },
   { href: '/device', label: 'Device' },
@@ -45,6 +47,7 @@ export function NavBar() {
           </Link>
         )
       })}
+      <ForecastAlertBadge />
       <InventorySelector />
     </nav>
   )

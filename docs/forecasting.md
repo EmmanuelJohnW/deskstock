@@ -42,20 +42,16 @@ How this maps to the feature brief:
 ### Reading a forecast card
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│ 📦 Resistor 10kΩ  Consumable                       [Monitor] │
-│    15 days ago: 200 pcs · Now: 50 pcs                         │
-│ ───────────────────────────────────────────────────────────── │
-│ Average daily usage          Estimated days remaining         │
-│ 10 pcs                       5 days                           │
-│ ┌──────────────────────────────────────────────────────────┐ │
-│ │ ⚠ Predicted stockout                                     │ │
-│ │ Expected to run out around Oct 15, 2026 if usage         │ │
-│ │ continues at the current rate. Reorder by Oct 12, 2026   │ │
-│ │ to avoid a shortage. About 250 pcs would cover the next  │ │
-│ │ 30 days.                                                 │ │
-│ └──────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────┘
+Resistor 10kΩ  (Consumable)                               [Monitor]
+15 days ago: 200 pcs · Now: 50 pcs
+────────────────────────────────────────────────────────────────────
+Average daily usage            Estimated days remaining
+10 pcs                         5 days
+
+  Predicted stockout
+  Expected to run out around Oct 15, 2026 if usage continues at the
+  current rate. Reorder by Oct 12, 2026 to avoid a shortage. About
+  250 pcs would cover the next 30 days.
 ```
 
 - **"15 days ago: 200 pcs · Now: 50 pcs"**: stock at the start of the period the forecast is based on (up to 30 days), and now.

@@ -123,6 +123,10 @@ import { getServerClient } from '@/lib/supabase/server'
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Postgres "undefined column": the consumable migration hasn't been run yet,
+// so every component is treated as returnable.
+const UNDEFINED_COLUMN = '42703'
+
 const AddStockSchema = z.object({
   component: z.string().min(1),
   qty: z.number().int().min(1),
@@ -152,6 +156,32 @@ export async function POST(req: NextRequest) {
 
   const { component, qty, inventory_id, borrow_id } = parsed.data
   const supabase = getServerClient()
+
+  // Consumables aren't returned, so a restock is new stock — don't let
+  // add_stock's FIFO matching close open loans with it. An explicit
+  // borrow_id override still goes through add_stock.
+  if (!borrow_id) {
+    const { data: comp, error: compError } = await supabase
+      .from('components')
+      .select('consumable')
+      .eq('inventory_id', inventory_id)
+      .eq('name', component)
+      .maybeSingle()
+    if (compError && compError.code !== UNDEFINED_COLUMN) {
+      console.error('[POST /api/inventory/add] component lookup failed:', compError.message)
+      return NextResponse.json({ success: false, error: compError.message }, { status: 500 })
+    }
+    if (comp?.consumable === true) {
+      const { error: insertError } = await supabase
+        .from('inventory_ledger')
+        .insert({ component, delta: qty, reason: 'adjustment', inventory_id })
+      if (insertError) {
+        console.error('[POST /api/inventory/add] consumable restock failed:', insertError.message)
+        return NextResponse.json({ success: false, error: insertError.message }, { status: 500 })
+      }
+      return NextResponse.json({ success: true, closed_borrows: [] })
+    }
+  }
 
   const { data, error } = await supabase.rpc('add_stock', {
     p_component: component,

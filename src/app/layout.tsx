@@ -3,6 +3,8 @@ import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { NavBar } from '@/components/NavBar'
 import { InventoryProvider } from '@/lib/inventory/context'
+import { ForecastProvider } from '@/lib/forecast/context'
+import { ForecastAlertBanner } from '@/components/forecast/ForecastAlertBanner'
 
 const plusJakarta = Plus_Jakarta_Sans({
   variable: '--font-plus-jakarta',
@@ -32,8 +34,11 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-gray-50 text-gray-900">
         <InventoryProvider>
-          <NavBar />
-          {children}
+          <ForecastProvider>
+            <NavBar />
+            <ForecastAlertBanner />
+            {children}
+          </ForecastProvider>
         </InventoryProvider>
       </body>
     </html>

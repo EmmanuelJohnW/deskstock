@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { useInventory } from '@/lib/inventory/context'
+import { useForecasts } from '@/lib/forecast/context'
 
 // ─── get_inventory — run in Supabase SQL editor ──────────────────────────────
 //
@@ -77,6 +78,7 @@ function fmtDate(iso: string): string {
 
 export default function InventoryPage() {
   const { selectedInventoryId, loading: inventoryLoading } = useInventory()
+  const { refresh: refreshForecasts } = useForecasts()
   const [rows, setRows] = useState<InventoryRow[]>([])
   const [componentNames, setComponentNames] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -202,7 +204,7 @@ export default function InventoryPage() {
       }
       setClosedBorrows(body.closed_borrows ?? [])
       setAddForm(EMPTY_ADD_FORM)
-      await load()
+      await Promise.all([load(), refreshForecasts()])
     } catch {
       setAddError('Network error')
     } finally {

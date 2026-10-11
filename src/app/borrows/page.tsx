@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { useInventory } from '@/lib/inventory/context'
+import { useForecasts } from '@/lib/forecast/context'
 
 interface Borrow {
   id: string
@@ -38,6 +39,7 @@ const INPUT_CLS =
 
 export default function BorrowsPage() {
   const { selectedInventoryId, loading: inventoryLoading } = useInventory()
+  const { refresh: refreshForecasts } = useForecasts()
   const [borrows, setBorrows] = useState<Borrow[]>([])
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -99,7 +101,7 @@ export default function BorrowsPage() {
         )
       } else {
         setForm(EMPTY_FORM)
-        await load()
+        await Promise.all([load(), refreshForecasts()])
       }
     } catch {
       setFormError('Network error')
@@ -119,7 +121,7 @@ export default function BorrowsPage() {
       const body = (await res.json()) as { error: string }
       setReturnError(body.error ?? 'Return failed')
     } else {
-      await load()
+      await Promise.all([load(), refreshForecasts()])
     }
   }
 
@@ -138,7 +140,7 @@ export default function BorrowsPage() {
           : body.error ?? 'Undo failed'
       )
     } else {
-      await load()
+      await Promise.all([load(), refreshForecasts()])
     }
   }
 

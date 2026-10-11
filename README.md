@@ -1,3 +1,17 @@
+# DeskStock
+
+Lab component inventory: an ESP32 sorter counts parts by weight, and this dashboard tracks stock, borrows, count sessions and reports.
+
+## Features
+
+- **Stockout forecasting**: predicts when each component will run out, warns on every page before it happens, and suggests when and how much to reorder. See [docs/forecasting.md](docs/forecasting.md).
+
+## Tests
+
+```bash
+npm test
+```
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

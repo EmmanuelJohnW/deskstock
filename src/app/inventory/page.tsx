@@ -43,20 +43,6 @@ interface InventoryRow {
   borrowed: number
 }
 
-interface ClosedBorrow {
-  borrow_id: string
-  borrower: string
-  qty: number
-  taken_at: string
-}
-
-interface OpenBorrowRow {
-  id: string
-  borrower: string
-  qty: number
-  taken_at: string
-}
-
 type SortKey = 'component' | 'qty' | 'borrowed'
 
 type DBBorrowRow = { component: string; qty: number }
@@ -72,10 +58,6 @@ const EMPTY_ADD_FORM = { component: '', qty: '1' }
 const INPUT_CLS =
   'bg-white border border-gray-300 rounded px-3 py-2 text-gray-900 text-sm focus:outline-none focus:border-emerald-500'
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
 export default function InventoryPage() {
   const { selectedInventoryId, loading: inventoryLoading } = useInventory()
   const { refresh: refreshForecasts } = useForecasts()
@@ -89,10 +71,7 @@ export default function InventoryPage() {
   const [addForm, setAddForm] = useState(EMPTY_ADD_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
-  const [closedBorrows, setClosedBorrows] = useState<ClosedBorrow[] | null>(null)
-
-  const [openBorrows, setOpenBorrows] = useState<OpenBorrowRow[]>([])
-  const [overrideBorrowId, setOverrideBorrowId] = useState('')
+  const [lastAdded, setLastAdded] = useState<{ component: string; qty: number } | null>(null)
 
   const load = useCallback(async () => {
     if (selectedInventoryId === null) {
@@ -148,61 +127,28 @@ export default function InventoryPage() {
     load()
   }, [load])
 
-  useEffect(() => {
-    setOverrideBorrowId('')
-    if (!addForm.component || selectedInventoryId === null) {
-      setOpenBorrows([])
-      return
-    }
-    let cancelled = false
-    getSupabaseClient()
-      .from('borrows')
-      .select('id, borrower, qty, taken_at')
-      .eq('component', addForm.component)
-      .eq('inventory_id', selectedInventoryId)
-      .is('returned_at', null)
-      .order('taken_at', { ascending: true })
-      .then(({ data }) => {
-        if (!cancelled) setOpenBorrows((data ?? []) as unknown as OpenBorrowRow[])
-      })
-    return () => { cancelled = true }
-  }, [addForm.component, selectedInventoryId])
-
   async function handleAddStock(e: React.FormEvent) {
     e.preventDefault()
     if (selectedInventoryId === null) return
     setSubmitting(true)
     setAddError(null)
-    setClosedBorrows(null)
+    setLastAdded(null)
+    const added = { component: addForm.component, qty: Number(addForm.qty) }
     try {
       const res = await fetch('/api/inventory/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          component: addForm.component,
-          qty: Number(addForm.qty),
-          inventory_id: selectedInventoryId,
-          ...(overrideBorrowId ? { borrow_id: overrideBorrowId } : {}),
-        }),
+        body: JSON.stringify({ ...added, inventory_id: selectedInventoryId }),
       })
       const body = (await res.json()) as {
         success: boolean
         error?: string | Record<string, unknown>
-        closed_borrows?: ClosedBorrow[]
       }
       if (!res.ok || !body.success) {
-        setAddError(
-          body.error === 'qty_below_selected_borrow'
-            ? 'Qty must fully cover the selected loan — no partial returns.'
-            : body.error === 'borrow_not_found_or_already_returned'
-            ? 'That loan was already returned — refresh and try again.'
-            : typeof body.error === 'string'
-            ? body.error
-            : JSON.stringify(body.error)
-        )
+        setAddError(typeof body.error === 'string' ? body.error : JSON.stringify(body.error))
         return
       }
-      setClosedBorrows(body.closed_borrows ?? [])
+      setLastAdded(added)
       setAddForm(EMPTY_ADD_FORM)
       await Promise.all([load(), refreshForecasts()])
     } catch {
@@ -279,24 +225,6 @@ export default function InventoryPage() {
             />
           </div>
 
-          {openBorrows.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 uppercase tracking-wider">Return match</label>
-              <select
-                value={overrideBorrowId}
-                onChange={e => setOverrideBorrowId(e.target.value)}
-                className={`${INPUT_CLS} min-w-[220px]`}
-              >
-                <option value="">Auto (earliest first)</option>
-                {openBorrows.map(b => (
-                  <option key={b.id} value={b.id}>
-                    {b.borrower} — {b.qty} (taken {fmtDate(b.taken_at)})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={submitting}
@@ -308,24 +236,14 @@ export default function InventoryPage() {
 
         {addError && <p className="mt-2 text-red-600 text-sm">{addError}</p>}
 
-        {closedBorrows && closedBorrows.length > 0 && (
-          <div className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-            Matched against {closedBorrows.length} outstanding loan
-            {closedBorrows.length > 1 ? 's' : ''} — marked returned:
-            <ul className="mt-1 list-disc list-inside">
-              {closedBorrows.map(b => (
-                <li key={b.borrow_id}>
-                  {b.qty} × {b.borrower} (taken {fmtDate(b.taken_at)})
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {closedBorrows && closedBorrows.length === 0 && (
-          <p className="mt-3 text-sm text-gray-400">
-            No outstanding loans to match — recorded as new stock.
+        {lastAdded && (
+          <p className="mt-3 text-sm text-gray-500">
+            Added {lastAdded.qty} × {lastAdded.component} as new stock.
           </p>
         )}
+        <p className="mt-2 text-xs text-gray-400">
+          For new or found stock only. To record a borrowed item coming back, use Return on the Borrows page.
+        </p>
       </section>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">

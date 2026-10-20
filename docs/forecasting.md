@@ -7,7 +7,7 @@ This document covers:
 1. [What's new](#1-whats-new)
 2. [Using it (for lab custodians)](#2-using-it-for-lab-custodians)
 3. [How the forecast is calculated](#3-how-the-forecast-is-calculated)
-4. [Consumable vs returnable components](#4-consumable-vs-returnable-components)
+4. [Returns and restocks](#4-returns-and-restocks)
 5. [Setup and deployment](#5-setup-and-deployment)
 6. [Testing](#6-testing)
 7. [Technical reference (for developers)](#7-technical-reference-for-developers)
@@ -22,8 +22,8 @@ This document covers:
 | **Forecast page** | Nav bar → **Forecast** (`/forecast`) | One card per component: average daily usage, estimated days remaining, predicted stockout date, reorder-by date and a suggested order quantity. |
 | **Alert banner** | Under the nav bar on every page (except Forecast) | Names the components that may run out soon, with days left, and links to the Forecast page. |
 | **Alert badge** | Nav bar, next to the inventory dropdown | ⚠ with the number of components at risk. Red if anything is out of stock or critical, orange otherwise. |
-| **Consumable flag** | Components page → **Consumable** checkbox | Marks parts that get used up (resistors, wire, LEDs) rather than returned (meters, boards). Changes how restocks and the forecast treat them. |
-| **Demo inventory** | `scripts/seed-forecast-demo.mjs` | Creates a "Forecast Demo" inventory with 30 days of sample history, for demonstrations. |
+| **Returns via the Return button** | Borrows page → **Return** | The Return button is the only way to record a borrowed item coming back. **Add Stock** always means new stock. |
+| **Demo inventory** | `scripts/seed-forecast-demo.mjs` | Creates a "Forecast Demo" inventory with sample history, for demonstrations. |
 
 How this maps to the feature brief:
 
@@ -42,15 +42,15 @@ How this maps to the feature brief:
 ### Reading a forecast card
 
 ```
-Resistor 10kΩ  (Consumable)                               [Monitor]
+Button                                                    [Monitor]
 15 days ago: 200 pcs · Now: 50 pcs
 ────────────────────────────────────────────────────────────────────
 Average daily usage            Estimated days remaining
 10 pcs                         5 days
 
   Predicted stockout
-  Expected to run out around Oct 15, 2026 if usage continues at the
-  current rate. Reorder by Oct 12, 2026 to avoid a shortage. About
+  Expected to run out around Oct 25, 2026 if usage continues at the
+  current rate. Reorder by Oct 22, 2026 to avoid a shortage. About
   250 pcs would cover the next 30 days.
 ```
 
@@ -76,7 +76,7 @@ Cards are sorted most urgent first.
 
 ### Alerts
 
-- The **banner** shows up to three at-risk components, for example *"3 components may run out soon: LED Red (out of stock), Capacitor 100nF (2.8 days left), Resistor 10kΩ (5 days left). View forecast"*.
+- The **banner** shows up to three at-risk components, for example *"3 components may run out soon: Buzzer (out of stock), 4mm coupler (2.5 days left), Button (5 days left). View forecast"*.
 - Click **✕** to hide the banner for the rest of the browser session. It comes back if a different component starts needing attention, or a component's status changes.
 - The **badge** stays visible until no component needs attention.
 - Alerts update right after you borrow, return, undo a return, add stock or finish a count session, a few seconds after a device sort run completes, when you open the Forecast page, and when you come back to the browser tab. They also refresh every 5 minutes.
@@ -87,9 +87,9 @@ Cards are sorted most urgent first.
 2. Order the **suggested quantity** before the **reorder-by date**. It allows 3 days for delivery.
 3. When it arrives, record it with **Inventory → Add Stock**. The component moves back to OK, and the alert clears.
 
-### Marking components as consumable
+### Recording returns
 
-On **Components**, tick **Consumable** for parts that are used up and not brought back (resistors, capacitors, LEDs, wire). Leave it unticked for tools and boards that are borrowed and returned. See [section 4](#4-consumable-vs-returnable-components) for why this matters.
+When a student brings a borrowed item back, click **Return** on that loan in the **Borrows** page. Don't use Add Stock for returns; Add Stock is only for new stock. See [section 4](#4-returns-and-restocks) for why.
 
 > **Note:** The inventory you pick in the dropdown is also the inventory the sorting device counts into. After a demo on "Forecast Demo", switch back to the inventory the device should use.
 
@@ -118,17 +118,17 @@ Average daily usage = Usage in the last 30 days ÷ Days observed
 
 Usage is **net consumption**: what left the shelf and didn't come back. Each stock record is counted by its type:
 
-| Stock record | Returnable component | Consumable component |
-|---|---|---|
-| Borrow | + usage | + usage |
-| Return | − usage | ignored |
-| Undo of a return | + usage | ignored |
-| Count shortfall (the sorter counted fewer than expected) | + usage | + usage |
-| Negative manual adjustment | + usage | + usage |
-| Restock / Add Stock / count surplus | ignored | ignored |
-| First count (baseline) | ignored | ignored |
+| Stock record | Effect on usage |
+|---|---|
+| Borrow | + usage |
+| Return (Return button) | − usage |
+| Undo of a return | + usage |
+| Count shortfall (the sorter counted fewer than expected) | + usage |
+| Negative manual adjustment | + usage |
+| Restock / Add Stock / count surplus | ignored |
+| First count (baseline) | ignored |
 
-Total usage is never negative.
+So a borrow that's **never returned** counts as used up, and one returned with the Return button doesn't. Total usage is never negative.
 
 ### The other numbers
 
@@ -158,38 +158,46 @@ The same `get_inventory` database function the Inventory page uses, so the numbe
 
 ---
 
-## 4. Consumable vs returnable components
+## 4. Returns and restocks
 
-**Why the flag exists.** Add Stock was built for returnable items: when parts come in, it assumes they are returned loans and closes the oldest open loans first. Only the remainder is recorded as new stock. For consumables that's wrong. A new box of resistors isn't a student returning the ones they used. Without the flag, restocking erased usage history, and the forecast thought the parts were never used.
+**The rule:** the **Return button** on the Borrows page is the only way to record a borrowed item coming back. **Add Stock** always records new stock.
 
-**What the flag changes:**
+**Why.** Add Stock used to guess: when parts came in, it assumed they were borrowed items being returned and closed the oldest open loans first. That's wrong for a new box of buttons or resistors. Those aren't students returning what they used. The guess made restocks look like returns, which erased usage history, so the forecast thought parts were never used.
 
-| | Returnable (default) | Consumable |
+With the Return button as the only source of returns, the data stays clear:
+
+| Action | Recorded as | Forecast |
 |---|---|---|
-| Add Stock | Closes open loans first (oldest first), then records the rest as new stock | Records everything as new stock. Loans stay open. Picking a specific loan under **Return match** still closes that loan. |
-| Forecast usage | Borrows minus returns | Every borrow counts. Returns don't reduce usage. |
-| Forecast card | — | "Consumable" label next to the name |
+| Borrow | A loan | Counts as usage |
+| Return button | Loan closed, stock back | Usage removed |
+| Add Stock | New stock | Not usage |
+| Borrowed, never returned | Loan stays open | Stays counted as used up |
 
-**Database change.** Run once, already applied to production on 2026-10-11:
+This works the same for every component, so there's nothing to set up per part.
 
-```sql
-alter table public.components add column consumable boolean not null default false;
-```
-
-Existing components start as returnable. If the column is missing, the app treats everything as returnable instead of failing.
+**Earlier version.** A previous version used a per-component **Consumable** checkbox to work around the guessing. It was removed. The `components.consumable` column still exists in the database but isn't used.
 
 ---
 
 ## 5. Setup and deployment
 
-1. **Database:** run the SQL in [section 4](#4-consumable-vs-returnable-components) once. Already done on the production database.
+1. **Database:** no changes needed.
 2. **Environment:** nothing new. Uses the existing `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SECRET_KEY`.
 3. **Device:** no firmware changes.
 4. **Demo inventory (optional):**
    ```bash
    node --env-file=.env.local scripts/seed-forecast-demo.mjs
    ```
-   Creates "Forecast Demo" with six components chosen to show every status. Resistor 10kΩ reproduces the brief's example (200 → 50 pcs at 10 per day). The script refuses to run if "Forecast Demo" already exists, so archive or delete it first to recreate it. It never touches other inventories.
+   Creates "Forecast Demo" with four components, one per alert status:
+
+   | Component | History | Status |
+   |---|---|---|
+   | Buzzer | 40 → 0 at 2 per day | Out of stock |
+   | 4mm coupler | 90 → 10 at 4 per day | Critical (2.5 days) |
+   | Button | 200 → 50 at 10 per day | Monitor (5 days, the brief's example) |
+   | IR sensor | 120 → 95 at 1 per day, plus loans returned with the Return button | OK (95 days) |
+
+   The script refuses to run if "Forecast Demo" already exists, so archive or rename it first to recreate it. It never touches other inventories.
 
 ---
 
@@ -198,24 +206,23 @@ Existing components start as returnable. If the column is missing, the app treat
 ### Automated
 
 ```bash
-npm test                # 43 unit tests
+npm test                # unit tests
 npm run test:coverage   # with coverage (forecast logic ~98%)
 ```
 
-The tests cover the brief's example, every usage rule in [section 3](#what-counts-as-usage), consumable handling, each status boundary, short histories, reorder dates and quantities, sort order, and the banner wording.
+The tests cover the brief's example, every usage rule in [section 3](#what-counts-as-usage), returns versus restocks, each status boundary, short histories, reorder dates and quantities, sort order, and the banner wording.
 
 ### Manual walkthrough
 
-On the **Forecast Demo** inventory. The exact numbers depend on its current history.
+On a freshly seeded **Forecast Demo** inventory:
 
 | Step | Do | Expect |
 |---|---|---|
-| 1 | Open Forecast | Out of stock, Critical, Monitor and OK cards. Banner on other pages; badge in the nav bar. |
-| 2 | Borrows → borrow a large quantity of an OK consumable | It moves to Monitor or Critical, and the badge count rises right away, with no reload. |
-| 3 | Return that borrow | Returnable: days remaining go back up. Consumable: usage stays counted (by design). |
-| 4 | Inventory → Add Stock on a Critical consumable | It moves to OK, the badge count drops, and no loans are closed. |
-| 5 | Add Stock on a returnable part with an open loan | The loan is closed as a return (unchanged behaviour). |
-| 6 | Dismiss the banner, then cause a new alert | The banner comes back. |
+| 1 | Open Forecast | Buzzer out of stock, 4mm coupler critical, Button monitor, IR sensor OK. Banner on other pages; badge shows 3. |
+| 2 | Borrows → borrow **70 IR sensor** | IR sensor moves to Monitor (about 6.6 days). The badge rises to 4 right away, with no reload. |
+| 3 | Click **Return** on that loan | IR sensor goes back to OK. The badge drops to 3. |
+| 4 | Inventory → Add Stock **40 4mm coupler** | 4mm coupler moves to OK (12.5 days). The badge drops by 1, and no loans are closed. |
+| 5 | Dismiss the banner, then cause a new alert | The banner comes back. |
 
 ---
 
@@ -233,8 +240,7 @@ On the **Forecast Demo** inventory. The exact numbers depend on its current hist
 | `src/app/forecast/page.tsx` | Forecast page |
 | `src/components/forecast/*` | `ForecastCard`, `StatusBadge`, `ForecastAlertBadge`, `ForecastAlertBanner` |
 | `src/app/layout.tsx` | Wraps the app in `ForecastProvider`; renders the banner |
-| `src/app/components/page.tsx`, `src/app/api/components/route.ts` | Consumable checkbox and API field |
-| `src/app/api/inventory/add/route.ts` | Consumable restocks bypass loan matching |
+| `src/app/api/inventory/add/route.ts` | Add Stock: records new stock only |
 | `scripts/seed-forecast-demo.mjs` | Demo data |
 | `*.test.ts`, `vitest.config.mts` | Unit tests |
 
@@ -242,12 +248,12 @@ On the **Forecast Demo** inventory. The exact numbers depend on its current hist
 
 ```
 inventory_ledger ─┐
-get_inventory()  ─┼─► ForecastProvider ─► computeForecasts() ─► ForecastPage
-components       ─┘   (one load, shared)                       ├► ForecastAlertBadge
-(consumable flags)                                             └► ForecastAlertBanner
+                  ├─► ForecastProvider ─► computeForecasts() ─► ForecastPage
+get_inventory()  ─┘   (one load, shared)                       ├► ForecastAlertBadge
+                                                               └► ForecastAlertBanner
 ```
 
-- The provider loads the selected inventory's full stock history (paged 1000 rows at a time), current stock and consumable names, then runs the pure `computeForecasts()` in the browser.
+- The provider loads the selected inventory's full stock history (paged 1000 rows at a time) and current stock, then runs the pure `computeForecasts()` in the browser.
 - Only the most recent load may update the screen, so switching inventories quickly can't show stale data.
 - `inventory_ledger` has no realtime feed. Code that changes stock should call `refresh()` from `useForecasts()` afterwards. The Borrows, Inventory, Session and Sort pages already do.
 
@@ -258,10 +264,9 @@ import { computeForecasts } from '@/lib/forecast/forecast'
 
 const forecasts = computeForecasts(
   ledgerEntries,                 // { component, delta, reason, created_at }[]
-  { 'Resistor 10kΩ': 50 },       // current stock by component
+  { Button: 50 },                // current stock by component
   new Date(),                    // "now"
   { monitorDays: 14 },           // optional: override any setting
-  new Set(['Resistor 10kΩ']),    // optional: consumable component names
 )
 ```
 
@@ -269,8 +274,7 @@ It's a pure function: no database access, and inputs are never modified. Results
 
 ### API changes
 
-- `POST/PUT /api/components` accept an optional `consumable: boolean`.
-- `POST /api/inventory/add` returns `closed_borrows: []` for consumables (unless `borrow_id` is given) and records a single `adjustment` entry.
+- `POST /api/inventory/add` records a single `adjustment` ledger entry and returns `{ success: true }`. It no longer accepts `borrow_id` or returns `closed_borrows`, and no longer calls the `add_stock()` database function (which still exists but is unused).
 
 No other endpoints, device API or database functions changed.
 
@@ -278,9 +282,10 @@ No other endpoints, device API or database functions changed.
 
 ## 8. Known limitations
 
+- **Returns must use the Return button.** If a borrowed item is put back on the shelf without clicking Return, its loan stays open and the forecast counts it as used up. The forecast then predicts a stockout earlier than needed, which errs on the safe side.
+- **Older history may skew forecasts for up to 30 days.** Before this change, Add Stock sometimes recorded restocks as automatic "returns". Those old records still reduce usage until they age out of the 30-day window.
 - **No live push.** Alerts update after actions in the same browser tab, on tab focus and every 5 minutes. A change made by another person or the device shows up on the next of those, not instantly. Live updates would need realtime turned on for `inventory_ledger` in Supabase.
 - **Weight sensing is per part, not per bin.** Stock comes from the sorter's counts, not from continuously weighing a full bin. A bin-weight sensor could feed the same forecast later.
-- **Consumable returns don't reduce usage.** If a consumable really is returned, use a manual adjustment instead.
 - **Constant-rate assumption.** The forecast assumes recent usage continues. It doesn't model seasons, semesters or one-off spikes.
 - **The dropdown sets the device's inventory.** Choosing an inventory on any open dashboard tab also changes which inventory the sorter counts into. This predates the forecast feature.
 - **Whole history loaded in the browser.** Fine at prototype scale. A very large history would need a database-side summary instead.

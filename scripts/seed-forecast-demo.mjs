@@ -6,12 +6,11 @@
 //   node --env-file=.env.local scripts/seed-forecast-demo.mjs
 //
 // Each component is designed to land in one forecast status:
-//   Resistor 10kΩ    200 → 50 at 10/day          → Monitor (5 days, the spec example)
-//   Jumper wire       90 → 10 at 4/day            → Critical (2.5 days)
-//   LED Red           40 → 0 at 2/day             → Out of stock
-//   Capacitor 100nF  300 at 3/day + a count shortfall → OK
-//   Multimeter       borrowed and returned        → No recent usage
-//   Arduino Uno      added 3 days ago             → Not enough data
+//   Button       200 → 50 at 10/day                  → Monitor (5 days, the spec example)
+//   4mm coupler   90 → 10 at 4/day                    → Critical (2.5 days)
+//   Buzzer        40 → 0 at 2/day                     → Out of stock
+//   IR sensor    120 → 95 at 1/day, plus some loans
+//                returned with the Return button      → OK (95 days)
 
 import { createClient } from '@supabase/supabase-js'
 
@@ -66,44 +65,32 @@ function returnedBorrow(component, qty, takenDaysAgo, returnedDaysAgo) {
   }
 }
 
-function countShortfall(component, qty, daysAgo) {
-  return { ledger: [{ component, delta: -qty, reason: 'sort_session', created_at: at(daysAgo) }], borrows: [] }
-}
-
 /** One consumed borrow per day, starting `days` days ago. */
 function dailyUsage(component, perDay, days) {
   return Array.from({ length: days }, (_, i) => consumedBorrow(component, perDay, days - i - 0.5))
 }
 
-// Requires the components.consumable column (see api/components/route.ts).
 const COMPONENTS = [
-  { name: 'Resistor 10kΩ', weight_g: 0.24, consumable: true },
-  { name: 'Jumper wire', weight_g: 0.5, consumable: true },
-  { name: 'LED Red', weight_g: 0.09, consumable: true },
-  { name: 'Capacitor 100nF', weight_g: 0.06, consumable: true },
-  { name: 'Multimeter', weight_g: 250, consumable: false },
-  { name: 'Arduino Uno', weight_g: 25, consumable: false },
+  { name: 'Button', weight_g: 1.2 },
+  { name: '4mm coupler', weight_g: 13.9 },
+  { name: 'Buzzer', weight_g: 2.5 },
+  { name: 'IR sensor', weight_g: 3.5 },
 ]
 
 const SCENARIOS = [
-  restock('Resistor 10kΩ', 200, 15),
-  ...dailyUsage('Resistor 10kΩ', 10, 15),
+  restock('Button', 200, 15),
+  ...dailyUsage('Button', 10, 15),
 
-  restock('Jumper wire', 90, 20),
-  ...dailyUsage('Jumper wire', 4, 20),
+  restock('4mm coupler', 90, 20),
+  ...dailyUsage('4mm coupler', 4, 20),
 
-  restock('LED Red', 40, 20),
-  ...dailyUsage('LED Red', 2, 20),
+  restock('Buzzer', 40, 20),
+  ...dailyUsage('Buzzer', 2, 20),
 
-  restock('Capacitor 100nF', 300, 25),
-  ...dailyUsage('Capacitor 100nF', 3, 25),
-  countShortfall('Capacitor 100nF', 5, 10),
-
-  restock('Multimeter', 5, 25),
-  ...[24, 18, 12, 6].map(d => returnedBorrow('Multimeter', 1, d, d - 1)),
-
-  restock('Arduino Uno', 10, 3),
-  consumedBorrow('Arduino Uno', 2, 1),
+  restock('IR sensor', 120, 25),
+  ...dailyUsage('IR sensor', 1, 25),
+  // Borrowed and brought back with the Return button: not counted as usage.
+  ...[22, 16, 9].map(d => returnedBorrow('IR sensor', 3, d, d - 1)),
 ]
 
 // ── Run ──────────────────────────────────────────────────────────────────────

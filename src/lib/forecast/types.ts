@@ -45,6 +45,4 @@ export interface ComponentForecast {
   /** Units to order to cover the coverage period at the current rate. */
   recommendedQty: number
   status: ForecastStatus
-  /** Consumables are used up: returns don't offset their borrows. */
-  isConsumable: boolean
 }

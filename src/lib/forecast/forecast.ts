@@ -45,18 +45,16 @@ export function countAlerts(forecasts: readonly ComponentForecast[]): number {
 /**
  * How much a ledger entry contributes to consumption. Borrows, return
  * reversals and shortfalls (negative counts/adjustments) add; returns
- * subtract; baselines and restocks don't count. For consumables, returns
- * and their reversals are ignored: a "return" of a consumable is really a
- * restock (Add Stock matches incoming units against open loans).
+ * (recorded only by the Return button) subtract; baselines and restocks
+ * don't count. So a borrow that's never returned counts as used up.
  */
-function usageOf(entry: LedgerEntry, isConsumable: boolean): number {
+function usageOf(entry: LedgerEntry): number {
   switch (entry.reason) {
     case 'borrow':
-      return Math.max(0, -entry.delta)
     case 'return_reversal':
-      return isConsumable ? 0 : Math.max(0, -entry.delta)
+      return Math.max(0, -entry.delta)
     case 'return':
-      return isConsumable ? 0 : -Math.max(0, entry.delta)
+      return -Math.max(0, entry.delta)
     case 'sort_session':
     case 'adjustment':
       return entry.delta < 0 ? -entry.delta : 0
@@ -102,7 +100,6 @@ function forecastComponent(
   currentStock: number,
   now: Date,
   options: ForecastOptions,
-  isConsumable: boolean,
 ): ComponentForecast {
   const nowMs = now.getTime()
   const windowStartMs = nowMs - options.windowDays * MS_PER_DAY
@@ -115,7 +112,7 @@ function forecastComponent(
   const afterPeriodStart = entries.filter((_, i) => times[i] > periodStartMs && times[i] <= nowMs)
 
   const observedDays = Math.min(options.windowDays, (nowMs - firstEntryMs) / MS_PER_DAY)
-  const usageInWindow = Math.max(0, inWindow.reduce((sum, e) => sum + usageOf(e, isConsumable), 0))
+  const usageInWindow = Math.max(0, inWindow.reduce((sum, e) => sum + usageOf(e), 0))
   const netChangeInPeriod = afterPeriodStart.reduce((sum, e) => sum + e.delta, 0)
 
   const hasEnoughHistory = observedDays >= options.minHistoryDays
@@ -136,7 +133,6 @@ function forecastComponent(
     reorderBy: stockoutDate === null ? null : addDays(stockoutDate, -options.leadTimeDays),
     recommendedQty: Math.max(0, Math.ceil(avgDailyUsage * options.coverageDays) - currentStock),
     status: classify(currentStock, observedDays, avgDailyUsage, daysRemaining, options),
-    isConsumable,
   }
 }
 
@@ -152,14 +148,12 @@ function byUrgency(a: ComponentForecast, b: ComponentForecast): number {
 /**
  * Forecast every component that has stock or ledger history, most urgent
  * first. A component missing from `currentStock` is treated as 0 in stock.
- * `consumables` names the components that get used up rather than returned.
  */
 export function computeForecasts(
   entries: readonly LedgerEntry[],
   currentStock: Readonly<Record<string, number>>,
   now: Date,
   overrides: Partial<ForecastOptions> = {},
-  consumables: ReadonlySet<string> = new Set(),
 ): ComponentForecast[] {
   const options = { ...DEFAULT_FORECAST_OPTIONS, ...overrides }
   const grouped = groupByComponent(entries)
@@ -167,14 +161,7 @@ export function computeForecasts(
 
   return [...components]
     .map(component =>
-      forecastComponent(
-        component,
-        grouped.get(component) ?? [],
-        currentStock[component] ?? 0,
-        now,
-        options,
-        consumables.has(component),
-      ),
+      forecastComponent(component, grouped.get(component) ?? [], currentStock[component] ?? 0, now, options),
     )
     .sort(byUrgency)
 }

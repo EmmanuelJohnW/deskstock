@@ -26,18 +26,20 @@ interface ForecastProviderProps {
 
 export function ForecastProvider({ children }: ForecastProviderProps) {
   const { view, loading, error, refresh } = useInventoryData()
-  const [now, setNow] = useState(() => new Date())
+  const [tick, setTick] = useState(0)
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), CLOCK_TICK_MS)
+    const timer = setInterval(() => setTick(t => t + 1), CLOCK_TICK_MS)
     return () => clearInterval(timer)
   }, [])
 
+  // "Now" is read whenever the data changes (or the clock ticks), so actions
+  // made a moment ago count as usage rather than as future entries.
   const forecasts = useMemo(() => {
     if (!view) return []
     const stock = Object.fromEntries(view.stock.map(s => [s.component, s.qty]))
-    return computeForecasts(view.ledger, stock, now)
-  }, [view, now])
+    return computeForecasts(view.ledger, stock, new Date())
+  }, [view, tick])
 
   const value = useMemo(() => ({ forecasts, loading, error, refresh }), [forecasts, loading, error, refresh])
 

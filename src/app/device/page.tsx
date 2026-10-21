@@ -6,6 +6,7 @@ import { getSupabaseClient } from '@/lib/supabase/client'
 import { DeviceLogTerminal } from '@/components/DeviceLogTerminal'
 import { LIVE_RUN_STALE_MS } from '@/lib/device/liveRunStaleness'
 import { useInventory } from '@/lib/inventory/context'
+import { NeedsInternet } from '@/components/offline/NeedsInternet'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -223,6 +224,8 @@ export default function DevicePage() {
   ]
 
   return (
+    <>
+    <NeedsInternet feature="The sorting device" />
     <div className="flex-1 p-6 max-w-2xl mx-auto w-full space-y-10">
 
       {/* ── Live status ── */}
@@ -328,5 +331,6 @@ export default function DevicePage() {
       </section>
 
     </div>
+    </>
   )
 }

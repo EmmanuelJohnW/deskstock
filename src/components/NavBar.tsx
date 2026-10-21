@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { InventorySelector } from '@/components/InventorySelector'
 import { ForecastAlertBadge } from '@/components/forecast/ForecastAlertBadge'
+import { ConnectionStatus } from '@/components/offline/ConnectionStatus'
 
 interface NavItem {
   href: string
@@ -48,6 +49,7 @@ export function NavBar() {
         )
       })}
       <ForecastAlertBadge />
+      <ConnectionStatus />
       <InventorySelector />
     </nav>
   )

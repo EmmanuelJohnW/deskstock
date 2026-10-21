@@ -1,15 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { getSupabaseClient } from '@/lib/supabase/client'
+import { useState } from 'react'
 import { useInventory } from '@/lib/inventory/context'
-
-interface ComponentRow {
-  id: number
-  name: string
-  weight_g: number
-  created_at: string
-}
+import { useInventoryData } from '@/lib/offline/data'
+import { ActionNotice, PendingTag } from '@/components/offline/PendingTag'
+import type { ComponentRow } from '@/lib/offline/types'
 
 const EMPTY_FORM = { name: '', weight_g: '' }
 
@@ -18,30 +13,15 @@ const INPUT_CLS =
 
 export default function ComponentsPage() {
   const { selectedInventoryId, loading: inventoryLoading } = useInventory()
-  const [components, setComponents] = useState<ComponentRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const { view, loading, error: loadError, createComponent, updateComponent, deleteComponent } = useInventoryData()
   const [editing, setEditing] = useState<ComponentRow | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ message: string; queued: boolean } | null>(null)
 
-  const load = useCallback(async () => {
-    if (selectedInventoryId === null) {
-      setComponents([])
-      setLoading(false)
-      return
-    }
-    const { data } = await getSupabaseClient()
-      .from('components')
-      .select('*')
-      .eq('inventory_id', selectedInventoryId)
-      .order('name', { ascending: true })
-    setComponents((data ?? []) as unknown as ComponentRow[])
-    setLoading(false)
-  }, [selectedInventoryId])
-
-  useEffect(() => { load() }, [load])
+  const components = view?.components ?? []
 
   function startEdit(c: ComponentRow) {
     setEditing(c)
@@ -60,53 +40,31 @@ export default function ComponentsPage() {
     if (selectedInventoryId === null) return
     setSubmitting(true)
     setFormError(null)
+    setNotice(null)
 
-    const payload = {
-      name: form.name.trim(),
-      weight_g: parseFloat(form.weight_g),
-      inventory_id: selectedInventoryId,
-      ...(editing ? { id: editing.id } : {}),
-    }
+    const fields = { name: form.name.trim(), weight_g: parseFloat(form.weight_g) }
+    const result = editing
+      ? await updateComponent({ componentId: editing.id, ...fields })
+      : await createComponent(fields)
+    setSubmitting(false)
 
-    const res = await fetch('/api/components', {
-      method: editing ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-
-    if (!res.ok) {
-      const body = (await res.json()) as { error: string | object }
-      setFormError(
-        body.error === 'name_taken'
-          ? 'A component with that name already exists.'
-          : typeof body.error === 'string'
-          ? body.error
-          : JSON.stringify(body.error),
-      )
-      setSubmitting(false)
+    if (!result.ok) {
+      setFormError(result.error ?? 'Save failed')
       return
     }
-
+    setNotice({ message: `${editing ? 'Updated' : 'Registered'} ${fields.name}.`, queued: !!result.queued })
     cancelEdit()
-    await load()
-    setSubmitting(false)
   }
 
   async function handleDelete(c: ComponentRow) {
     if (selectedInventoryId === null) return
     setDeleteError(null)
-    const res = await fetch('/api/components', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: c.id, inventory_id: selectedInventoryId }),
-    })
-    if (!res.ok) {
-      const body = (await res.json()) as { error: string }
-      setDeleteError(body.error ?? 'Delete failed')
-    } else {
-      if (editing?.id === c.id) cancelEdit()
-      await load()
+    const result = await deleteComponent(c.id)
+    if (!result.ok) {
+      setDeleteError(result.error ?? 'Delete failed')
+      return
     }
+    if (editing?.id === c.id) cancelEdit()
   }
 
   if (inventoryLoading || loading) {
@@ -119,6 +77,10 @@ export default function ComponentsPage() {
         No inventory selected — create one from the dropdown above.
       </div>
     )
+  }
+
+  if (loadError) {
+    return <div className="flex-1 p-8 text-red-600">{loadError}</div>
   }
 
   return (
@@ -178,6 +140,7 @@ export default function ComponentsPage() {
         </form>
 
         {formError && <p className="mt-2 text-red-600 text-sm">{formError}</p>}
+        {notice && <ActionNotice queued={notice.queued} message={notice.message} />}
       </section>
 
       {/* ── Component list ── */}
@@ -210,7 +173,10 @@ export default function ComponentsPage() {
                     key={c.id}
                     className={`hover:bg-gray-50 ${editing?.id === c.id ? 'bg-emerald-50' : ''}`}
                   >
-                    <td className="px-4 py-3 text-gray-900 font-mono">{c.name}</td>
+                    <td className="px-4 py-3 text-gray-900 font-mono">
+                      {c.name}
+                      {c.pending && <PendingTag />}
+                    </td>
                     <td className="px-4 py-3 tabular-nums text-gray-700 font-mono">
                       {Number(c.weight_g).toFixed(3)}
                     </td>

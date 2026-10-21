@@ -1,6 +1,8 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { useConnectivity } from '@/lib/offline/connectivity'
+import { loadInventories, saveInventories } from '@/lib/offline/store'
 
 export interface InventorySummary {
   id: number
@@ -42,10 +44,28 @@ export function InventoryProvider({ children }: InventoryProviderProps) {
   const [selectedInventoryId, setSelectedInventoryIdState] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const { isOffline, reportNetworkFailure } = useConnectivity()
+
+  // Online: fetch the list and keep a copy on the laptop. Offline (or if the
+  // request fails): use that copy.
+  const fetchList = useCallback(async (): Promise<InventorySummary[]> => {
+    if (!isOffline) {
+      try {
+        const res = await fetch('/api/inventories', { cache: 'no-store' })
+        const body = (await res.json()) as { success: boolean; inventories?: InventorySummary[] }
+        if (res.ok && body.inventories) {
+          await saveInventories(body.inventories)
+          return body.inventories
+        }
+      } catch {
+        reportNetworkFailure()
+      }
+    }
+    return loadInventories()
+  }, [isOffline, reportNetworkFailure])
+
   const refresh = useCallback(async () => {
-    const res = await fetch('/api/inventories')
-    const body = (await res.json()) as { success: boolean; inventories?: InventorySummary[] }
-    const list = body.inventories ?? []
+    const list = await fetchList()
     setInventories(list)
     setSelectedInventoryIdState(current => {
       const preferred = current ?? readStoredId()
@@ -53,7 +73,7 @@ export function InventoryProvider({ children }: InventoryProviderProps) {
       return list[0]?.id ?? null
     })
     setLoading(false)
-  }, [])
+  }, [fetchList])
 
   useEffect(() => {
     refresh()
@@ -65,8 +85,9 @@ export function InventoryProvider({ children }: InventoryProviderProps) {
   // "Start Count Session" click. Fires on manual switches and on the
   // initial auto-pick alike, so the device always has *some* active
   // inventory as soon as the dashboard has loaded one.
+  // Skipped while offline; re-sent when the connection comes back.
   useEffect(() => {
-    if (selectedInventoryId === null) return
+    if (selectedInventoryId === null || isOffline) return
     fetch('/api/active-inventory', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -75,7 +96,7 @@ export function InventoryProvider({ children }: InventoryProviderProps) {
       // Best-effort — a failed sync here just means the device falls back to
       // whatever active inventory was last set, or 409s with no_active_inventory.
     })
-  }, [selectedInventoryId])
+  }, [selectedInventoryId, isOffline])
 
   function selectInventory(id: number) {
     setSelectedInventoryIdState(id)
@@ -83,6 +104,7 @@ export function InventoryProvider({ children }: InventoryProviderProps) {
   }
 
   async function createInventory(name: string): Promise<ActionResult> {
+    if (isOffline) return { success: false, error: 'Creating an inventory needs an internet connection.' }
     const res = await fetch('/api/inventories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -98,6 +120,7 @@ export function InventoryProvider({ children }: InventoryProviderProps) {
   }
 
   async function archiveInventory(id: number): Promise<ActionResult> {
+    if (isOffline) return { success: false, error: 'Archiving an inventory needs an internet connection.' }
     const res = await fetch('/api/inventories', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

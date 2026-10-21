@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { getSupabaseClient } from '@/lib/supabase/client'
+import { useMemo, useState, type ReactNode } from 'react'
 import { exportReportsPdf, exportReportsExcel } from '@/lib/reports/export'
 import { useInventory } from '@/lib/inventory/context'
+import { useInventoryData } from '@/lib/offline/data'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ interface BorrowRow {
 }
 
 interface LedgerRow {
-  id: number
+  id?: number
   component: string
   delta: number
   reason: string
@@ -103,115 +103,45 @@ function EmptyRow({ cols, message }: { cols: number; message: string }) {
 
 export default function ReportsPage() {
   const { selectedInventoryId, loading: inventoryLoading } = useInventory()
-  const [inventory,    setInventory]    = useState<InvRow[]>([])
-  const [discSessions, setDiscSessions] = useState<DiscrepancySession[]>([])
-  const [borrows,      setBorrows]      = useState<BorrowRow[]>([])
-  const [loading,      setLoading]      = useState(true)
-  const [error,        setError]        = useState<string | null>(null)
-
+  const { view, loading, error } = useInventoryData()
   const [selectedComponent, setSelectedComponent] = useState('')
-  const [ledger,            setLedger]            = useState<LedgerRow[]>([])
-  const [ledgerLoading,     setLedgerLoading]     = useState(false)
 
   const [exporting,   setExporting]   = useState<'pdf' | 'excel' | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (selectedInventoryId === null) {
-      setInventory([])
-      setDiscSessions([])
-      setBorrows([])
-      setLoading(false)
-      return
-    }
-    async function load() {
-      if (selectedInventoryId === null) return
-      try {
-        const supabase = getSupabaseClient()
-        const [
-          { data: invData,    error: invErr    },
-          { data: reconcData, error: reconcErr },
-          { data: sessData,   error: sessErr   },
-          { data: borrowData, error: borrowErr },
-        ] = await Promise.all([
-          supabase.rpc('get_inventory', { p_inventory_id: selectedInventoryId }),
-          supabase
-            .from('reconciliations')
-            .select('session_id, component, expected, counted, difference')
-            .eq('inventory_id', selectedInventoryId)
-            .neq('difference', 0)
-            .order('session_id', { ascending: false })
-            .order('component',  { ascending: true }),
-          supabase
-            .from('count_sessions')
-            .select('id, finished_at')
-            .eq('status', 'reconciled')
-            .eq('inventory_id', selectedInventoryId),
-          supabase
-            .from('borrows')
-            .select('*')
-            .eq('inventory_id', selectedInventoryId)
-            .order('taken_at', { ascending: false }),
-        ])
+  const inventory: InvRow[] = view?.stock ?? []
+  const borrows: BorrowRow[] = view?.borrows ?? []
 
-        if (invErr)    throw invErr
-        if (reconcErr) throw reconcErr
-        if (sessErr)   throw sessErr
-        if (borrowErr) throw borrowErr
-
-        setInventory((invData ?? []) as unknown as InvRow[])
-        setBorrows((borrowData ?? []) as unknown as BorrowRow[])
-
-        const sessById = new Map<number, string | null>(
-          ((sessData ?? []) as { id: number; finished_at: string | null }[])
-            .map(s => [s.id, s.finished_at])
-        )
-
-        const grouped = new Map<number, DiscrepancySession>()
-        for (const r of (reconcData ?? []) as (DiscrepancyRow & { session_id: number })[]) {
-          if (!grouped.has(r.session_id)) {
-            grouped.set(r.session_id, {
-              session_id: r.session_id,
-              finished_at: sessById.get(r.session_id) ?? null,
-              rows: [],
-            })
-          }
-          grouped.get(r.session_id)!.rows.push({
-            component: r.component, expected: r.expected,
-            counted: r.counted,     difference: r.difference,
-          })
-        }
-        setDiscSessions(Array.from(grouped.values()))
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Load failed')
-      } finally {
-        setLoading(false)
+  // Discrepancy report: non-zero reconciliation rows grouped by session.
+  const discSessions = useMemo<DiscrepancySession[]>(() => {
+    if (!view) return []
+    const finishedAt = new Map(view.countSessions.map(s => [s.id, s.finished_at]))
+    const grouped = new Map<number, DiscrepancySession>()
+    for (const r of view.reconciliations) {
+      const session = grouped.get(r.session_id) ?? {
+        session_id: r.session_id,
+        finished_at: finishedAt.get(r.session_id) ?? null,
+        rows: [],
       }
-    }
-    load()
-  }, [selectedInventoryId])
-
-  const loadLedger = useCallback(async (component: string) => {
-    if (!component || selectedInventoryId === null) { setLedger([]); return }
-    setLedgerLoading(true)
-    const { data, error: err } = await getSupabaseClient()
-      .from('inventory_ledger')
-      .select('id, component, delta, reason, session_id, created_at')
-      .eq('component', component)
-      .eq('inventory_id', selectedInventoryId)
-      .order('created_at', { ascending: true })
-    setLedgerLoading(false)
-    if (err) return
-    let balance = 0
-    setLedger(
-      ((data ?? []) as Omit<LedgerRow, 'running_balance'>[]).map(row => {
-        balance += row.delta
-        return { ...row, running_balance: balance }
+      grouped.set(r.session_id, {
+        ...session,
+        rows: [...session.rows, { component: r.component, expected: r.expected, counted: r.counted, difference: r.difference }],
       })
-    )
-  }, [selectedInventoryId])
+    }
+    return [...grouped.values()]
+  }, [view])
 
-  useEffect(() => { loadLedger(selectedComponent) }, [selectedComponent, loadLedger])
+  // Ledger trail for one component, oldest first, with a running balance.
+  const ledger = useMemo<LedgerRow[]>(() => {
+    if (!view || !selectedComponent) return []
+    const rows = view.ledger
+      .filter(r => r.component === selectedComponent)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    return rows.reduce<LedgerRow[]>((acc, row) => {
+      const previous = acc.at(-1)?.running_balance ?? 0
+      return [...acc, { ...row, session_id: row.session_id ?? null, running_balance: previous + row.delta }]
+    }, [])
+  }, [view, selectedComponent])
 
   async function handleExport(format: 'pdf' | 'excel') {
     setExporting(format)
@@ -399,8 +329,6 @@ export default function ReportsPage() {
 
         {!selectedComponent ? (
           <p className="text-sm text-gray-400">Select a component above to trace its ledger history.</p>
-        ) : ledgerLoading ? (
-          <p className="text-sm text-gray-400">Loading…</p>
         ) : (
           <TableWrap>
             <thead className="bg-gray-50 text-left">
@@ -409,8 +337,8 @@ export default function ReportsPage() {
             <tbody className="divide-y divide-gray-200">
               {ledger.length === 0
                 ? <EmptyRow cols={4} message="No ledger entries." />
-                : ledger.map(row => (
-                    <tr key={row.id} className="hover:bg-gray-50">
+                : ledger.map((row, i) => (
+                    <tr key={row.id ?? `pending-${i}`} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-xs font-mono text-gray-400">
                         {fmtDateTime(row.created_at)}
                       </td>

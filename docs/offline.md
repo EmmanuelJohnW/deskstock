@@ -102,5 +102,5 @@ API additions (all optional, for sync):
 - **Sorting and live device data need internet.**
 - **Return and Undo record the sync time**, not the time they were done offline. Borrows and restocks keep their real time.
 - **Stock checks offline use the saved copy.** A borrow accepted offline can still be rejected at sync if stock changed online.
-- **Re-registering a component offline that already synced** can show *name already exists* on a later replay; discard it if so.
+- **Registering a component offline whose name was meanwhile registered online** links to the existing component instead of failing; the same name is treated as the same component.
 - **The saved copy is per browser.** Another laptop or browser has its own copy and queue.

@@ -20,9 +20,31 @@ export async function GET(req: NextRequest) {
   return guard(req) ?? NextResponse.json({ offline: isHubForcedOffline() })
 }
 
+/**
+ * Only the laptop's own dashboard may flip the switch: reject requests a
+ * browser marks as coming from another site, and non-JSON bodies (which a
+ * cross-site form or no-cors fetch could send).
+ */
+function isFromOwnDashboard(req: NextRequest): boolean {
+  const site = req.headers.get('sec-fetch-site')
+  if (site !== null && site !== 'same-origin') return false
+  const origin = req.headers.get('origin')
+  if (origin !== null) {
+    try {
+      if (new URL(origin).host !== req.headers.get('host')) return false
+    } catch {
+      return false
+    }
+  }
+  return (req.headers.get('content-type') ?? '').startsWith('application/json')
+}
+
 export async function POST(req: NextRequest) {
   const denied = guard(req)
   if (denied) return denied
+  if (!isFromOwnDashboard(req)) {
+    return NextResponse.json({ success: false, error: 'forbidden' }, { status: 403 })
+  }
   const parsed = ModeSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ success: false, error: 'invalid_body' }, { status: 422 })
   await setHubForcedOffline(parsed.data.offline)

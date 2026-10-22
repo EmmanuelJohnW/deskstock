@@ -7,6 +7,7 @@ import { ArchBinMap } from '@/components/ArchBinMap'
 import { StatusBar } from '@/components/StatusBar'
 import { TelemetryBar } from '@/components/TelemetryBar'
 import { SessionPanel } from '@/components/SessionPanel'
+import { NeedsInternet } from '@/components/offline/NeedsInternet'
 
 // The live view flips to "complete" when the run is persisted; reconciliation
 // finishes just after, so give it a moment before reloading forecasts.
@@ -38,6 +39,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-gray-50 text-gray-900">
+      <NeedsInternet feature="Sorting" />
       <StatusBar
         online={device.online}
         rssi={device.rssi}

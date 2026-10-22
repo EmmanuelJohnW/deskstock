@@ -4,6 +4,9 @@ import './globals.css'
 import { NavBar } from '@/components/NavBar'
 import { InventoryProvider } from '@/lib/inventory/context'
 import { ForecastProvider } from '@/lib/forecast/context'
+import { ConnectivityProvider } from '@/lib/offline/connectivity'
+import { InventoryDataProvider } from '@/lib/offline/data'
+import { ServiceWorkerRegistrar } from '@/components/offline/ServiceWorkerRegistrar'
 import { ForecastAlertBanner } from '@/components/forecast/ForecastAlertBanner'
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -33,13 +36,18 @@ export default function RootLayout({
       className={`${plusJakarta.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-gray-50 text-gray-900">
-        <InventoryProvider>
-          <ForecastProvider>
-            <NavBar />
-            <ForecastAlertBanner />
-            {children}
-          </ForecastProvider>
-        </InventoryProvider>
+        <ConnectivityProvider>
+          <ServiceWorkerRegistrar />
+          <InventoryProvider>
+            <InventoryDataProvider>
+              <ForecastProvider>
+                <NavBar />
+                <ForecastAlertBanner />
+                {children}
+              </ForecastProvider>
+            </InventoryDataProvider>
+          </InventoryProvider>
+        </ConnectivityProvider>
       </body>
     </html>
   )

@@ -33,7 +33,11 @@ const ComponentFields = z.object({
   inventory_id: z.number().int().positive(),
 })
 
-const CreateSchema = ComponentFields
+const CreateSchema = ComponentFields.extend({
+  // Set by offline sync: a replayed create (lost reply) gets the existing
+  // component's id back instead of a "name taken" error.
+  return_existing: z.boolean().optional(),
+})
 
 const UpdateSchema = ComponentFields.extend({
   id: z.number().int().positive(),
@@ -61,8 +65,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 })
   }
 
-  const { error } = await getServerClient().from('components').insert(parsed.data)
+  const { return_existing, ...fields } = parsed.data
+  const supabase = getServerClient()
+  const { data, error } = await supabase.from('components').insert(fields).select('id').single()
   if (error) {
+    if (isUniqueViolation(error) && return_existing) {
+      const { data: existing } = await supabase
+        .from('components')
+        .select('id')
+        .eq('inventory_id', fields.inventory_id)
+        .eq('name', fields.name)
+        .maybeSingle()
+      if (existing) return NextResponse.json({ success: true, id: existing.id, existing: true })
+    }
     if (isUniqueViolation(error)) {
       return NextResponse.json({ success: false, error: 'name_taken' }, { status: 409 })
     }
@@ -70,7 +85,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true }, { status: 201 })
+  return NextResponse.json({ success: true, id: data.id }, { status: 201 })
 }
 
 export async function PUT(req: NextRequest) {

@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { getSupabaseClient } from '@/lib/supabase/client'
+import { useMemo, useState } from 'react'
 import { useInventory } from '@/lib/inventory/context'
-import { useForecasts } from '@/lib/forecast/context'
+import { useInventoryData } from '@/lib/offline/data'
+import { ActionNotice, PendingTag } from '@/components/offline/PendingTag'
 
 // ─── get_inventory — run in Supabase SQL editor ──────────────────────────────
 //
@@ -41,11 +41,10 @@ interface InventoryRow {
   component: string
   qty: number
   borrowed: number
+  isPending: boolean
 }
 
 type SortKey = 'component' | 'qty' | 'borrowed'
-
-type DBBorrowRow = { component: string; qty: number }
 
 const COLS: { key: SortKey; label: string }[] = [
   { key: 'component', label: 'Component' },
@@ -60,72 +59,31 @@ const INPUT_CLS =
 
 export default function InventoryPage() {
   const { selectedInventoryId, loading: inventoryLoading } = useInventory()
-  const { refresh: refreshForecasts } = useForecasts()
-  const [rows, setRows] = useState<InventoryRow[]>([])
-  const [componentNames, setComponentNames] = useState<string[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const { view, loading, error: loadError, addStock } = useInventoryData()
   const [sortKey, setSortKey] = useState<SortKey>('component')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   const [addForm, setAddForm] = useState(EMPTY_ADD_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
-  const [lastAdded, setLastAdded] = useState<{ component: string; qty: number } | null>(null)
+  const [lastAdded, setLastAdded] = useState<{ component: string; qty: number; queued: boolean } | null>(null)
 
-  const load = useCallback(async () => {
-    if (selectedInventoryId === null) {
-      setRows([])
-      setComponentNames([])
-      setLoading(false)
-      return
+  const rows = useMemo<InventoryRow[]>(() => {
+    if (!view) return []
+    const loaned = new Map<string, number>()
+    for (const b of view.borrows) {
+      if (b.returned_at === null) loaned.set(b.component, (loaned.get(b.component) ?? 0) + b.qty)
     }
-    try {
-      const supabase = getSupabaseClient()
-      const [
-        { data: inv, error: invErr },
-        { data: borrows, error: borrowErr },
-        { data: catalog, error: catalogErr },
-      ] = await Promise.all([
-        supabase.rpc('get_inventory', { p_inventory_id: selectedInventoryId }),
-        supabase
-          .from('borrows')
-          .select('component, qty')
-          .eq('inventory_id', selectedInventoryId)
-          .is('returned_at', null),
-        supabase
-          .from('components')
-          .select('name')
-          .eq('inventory_id', selectedInventoryId)
-          .order('name', { ascending: true }),
-      ])
+    const pending = new Set(view.ledger.filter(l => l.pending).map(l => l.component))
+    return view.stock.map(s => ({
+      component: s.component,
+      qty: s.qty,
+      borrowed: loaned.get(s.component) ?? 0,
+      isPending: pending.has(s.component),
+    }))
+  }, [view])
 
-      if (invErr)     throw new Error(invErr.message)
-      if (borrowErr)  throw new Error(borrowErr.message)
-      if (catalogErr) throw new Error(catalogErr.message)
-
-      const loanedMap = ((borrows ?? []) as unknown as DBBorrowRow[]).reduce<
-        Record<string, number>
-      >((acc, b) => ({ ...acc, [b.component]: (acc[b.component] ?? 0) + b.qty }), {})
-
-      setRows(
-        ((inv ?? []) as { component: string; qty: number }[]).map(r => ({
-          component: r.component,
-          qty: r.qty,
-          borrowed: loanedMap[r.component] ?? 0,
-        }))
-      )
-      setComponentNames(((catalog ?? []) as { name: string }[]).map(c => c.name))
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Load failed')
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedInventoryId])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const componentNames = useMemo(() => (view?.components ?? []).map(c => c.name), [view])
 
   async function handleAddStock(e: React.FormEvent) {
     e.preventDefault()
@@ -134,28 +92,14 @@ export default function InventoryPage() {
     setAddError(null)
     setLastAdded(null)
     const added = { component: addForm.component, qty: Number(addForm.qty) }
-    try {
-      const res = await fetch('/api/inventory/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...added, inventory_id: selectedInventoryId }),
-      })
-      const body = (await res.json()) as {
-        success: boolean
-        error?: string | Record<string, unknown>
-      }
-      if (!res.ok || !body.success) {
-        setAddError(typeof body.error === 'string' ? body.error : JSON.stringify(body.error))
-        return
-      }
-      setLastAdded(added)
-      setAddForm(EMPTY_ADD_FORM)
-      await Promise.all([load(), refreshForecasts()])
-    } catch {
-      setAddError('Network error')
-    } finally {
-      setSubmitting(false)
+    const result = await addStock(added)
+    setSubmitting(false)
+    if (!result.ok) {
+      setAddError(result.error ?? 'Could not add stock')
+      return
     }
+    setLastAdded({ ...added, queued: !!result.queued })
+    setAddForm(EMPTY_ADD_FORM)
   }
 
   function onSort(key: SortKey) {
@@ -237,9 +181,10 @@ export default function InventoryPage() {
         {addError && <p className="mt-2 text-red-600 text-sm">{addError}</p>}
 
         {lastAdded && (
-          <p className="mt-3 text-sm text-gray-500">
-            Added {lastAdded.qty} × {lastAdded.component} as new stock.
-          </p>
+          <ActionNotice
+            queued={lastAdded.queued}
+            message={`Added ${lastAdded.qty} × ${lastAdded.component} as new stock.`}
+          />
         )}
         <p className="mt-2 text-xs text-gray-400">
           For new or found stock only. To record a borrowed item coming back, use Return on the Borrows page.
@@ -274,7 +219,10 @@ export default function InventoryPage() {
             ) : (
               sorted.map(row => (
                 <tr key={row.component} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-900 font-mono">{row.component}</td>
+                  <td className="px-4 py-3 text-gray-900 font-mono">
+                    {row.component}
+                    {row.isPending && <PendingTag />}
+                  </td>
                   <td className="px-4 py-3 tabular-nums font-semibold text-emerald-600">
                     {row.qty}
                   </td>

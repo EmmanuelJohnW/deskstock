@@ -66,6 +66,9 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase.rpc('return_borrow', { p_borrow_id: borrow_id })
 
   if (error) {
+    if (error.message === 'borrow_not_found') {
+      return NextResponse.json({ success: false, error: 'borrow_not_found' }, { status: 404 })
+    }
     if (error.message === 'already_returned') {
       return NextResponse.json({ success: false, error: 'already_returned' }, { status: 409 })
     }

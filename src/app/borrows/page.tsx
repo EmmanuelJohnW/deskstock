@@ -1,24 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { getSupabaseClient } from '@/lib/supabase/client'
+import { useState } from 'react'
 import { useInventory } from '@/lib/inventory/context'
-import { useForecasts } from '@/lib/forecast/context'
-
-interface Borrow {
-  id: string
-  component: string
-  qty: number
-  borrower: string
-  taken_at: string
-  due_at: string
-  returned_at: string | null
-}
-
-interface InventoryItem {
-  component: string
-  qty: number
-}
+import { useInventoryData } from '@/lib/offline/data'
+import { ActionNotice, PendingTag } from '@/components/offline/PendingTag'
 
 const EMPTY_FORM = { component: '', qty: '1', borrower: '', due_at: '' }
 
@@ -39,109 +24,49 @@ const INPUT_CLS =
 
 export default function BorrowsPage() {
   const { selectedInventoryId, loading: inventoryLoading } = useInventory()
-  const { refresh: refreshForecasts } = useForecasts()
-  const [borrows, setBorrows] = useState<Borrow[]>([])
-  const [inventory, setInventory] = useState<InventoryItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const { view, loading, error: loadError, borrow, returnBorrow, undoReturn } = useInventoryData()
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [returnError, setReturnError] = useState<string | null>(null)
   const [undoError, setUndoError] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [notice, setNotice] = useState<{ message: string; queued: boolean } | null>(null)
 
-  const load = useCallback(async () => {
-    if (selectedInventoryId === null) {
-      setBorrows([])
-      setInventory([])
-      setLoading(false)
-      return
-    }
-    const supabase = getSupabaseClient()
-    const [{ data: borrowData }, { data: invData }] = await Promise.all([
-      supabase
-        .from('borrows')
-        .select('*')
-        .eq('inventory_id', selectedInventoryId)
-        .order('taken_at', { ascending: false }),
-      supabase.rpc('get_inventory', { p_inventory_id: selectedInventoryId }),
-    ])
-    setBorrows((borrowData ?? []) as unknown as Borrow[])
-    setInventory((invData ?? []) as unknown as InventoryItem[])
-    setLoading(false)
-  }, [selectedInventoryId])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const borrows = view?.borrows ?? []
+  const inventory = view?.stock ?? []
 
   async function handleBorrow(e: React.FormEvent) {
     e.preventDefault()
     if (selectedInventoryId === null) return
     setSubmitting(true)
     setFormError(null)
-    try {
-      const res = await fetch('/api/borrows', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          component: form.component,
-          qty: Number(form.qty),
-          borrower: form.borrower,
-          due_at: new Date(`${form.due_at}T23:59:59`).toISOString(),
-          inventory_id: selectedInventoryId,
-        }),
-      })
-      if (!res.ok) {
-        const body = (await res.json()) as { error: string | Record<string, unknown> }
-        setFormError(
-          body.error === 'insufficient_stock'
-            ? 'Not enough in stock'
-            : JSON.stringify(body.error)
-        )
-      } else {
-        setForm(EMPTY_FORM)
-        await Promise.all([load(), refreshForecasts()])
-      }
-    } catch {
-      setFormError('Network error')
-    } finally {
-      setSubmitting(false)
+    setNotice(null)
+    const result = await borrow({
+      component: form.component,
+      qty: Number(form.qty),
+      borrower: form.borrower,
+      due_at: new Date(`${form.due_at}T23:59:59`).toISOString(),
+    })
+    setSubmitting(false)
+    if (!result.ok) {
+      setFormError(result.error ?? 'Borrow failed')
+      return
     }
+    setNotice({ message: `${form.borrower} borrowed ${form.qty} × ${form.component}.`, queued: !!result.queued })
+    setForm(EMPTY_FORM)
   }
 
   async function handleReturn(borrowId: string) {
     setReturnError(null)
-    const res = await fetch('/api/borrows/return', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ borrow_id: borrowId }),
-    })
-    if (!res.ok) {
-      const body = (await res.json()) as { error: string }
-      setReturnError(body.error ?? 'Return failed')
-    } else {
-      await Promise.all([load(), refreshForecasts()])
-    }
+    const result = await returnBorrow(borrowId)
+    if (!result.ok) setReturnError(result.error ?? 'Return failed')
   }
 
   async function handleUndoReturn(borrowId: string) {
     setUndoError(null)
-    const res = await fetch('/api/borrows/undo-return', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ borrow_id: borrowId }),
-    })
-    if (!res.ok) {
-      const body = (await res.json()) as { error: string }
-      setUndoError(
-        body.error === 'insufficient_stock_to_undo'
-          ? "Can't undo — those units are already accounted for elsewhere (re-lent or adjusted)."
-          : body.error ?? 'Undo failed'
-      )
-    } else {
-      await Promise.all([load(), refreshForecasts()])
-    }
+    const result = await undoReturn(borrowId)
+    if (!result.ok) setUndoError(result.error ?? 'Undo failed')
   }
 
   const open = borrows.filter(b => !b.returned_at)
@@ -157,6 +82,10 @@ export default function BorrowsPage() {
         No inventory selected — create one from the dropdown above.
       </div>
     )
+  }
+
+  if (loadError) {
+    return <div className="flex-1 p-8 text-red-600">{loadError}</div>
   }
 
   return (
@@ -227,6 +156,7 @@ export default function BorrowsPage() {
           </button>
         </form>
         {formError && <p className="mt-2 text-red-600 text-sm">{formError}</p>}
+        {notice && <ActionNotice queued={notice.queued} message={notice.message} />}
       </section>
 
       {/* ── Open borrows ── */}
@@ -259,7 +189,10 @@ export default function BorrowsPage() {
                   const overdue = isOverdue(b.due_at)
                   return (
                     <tr key={b.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-900 font-mono">{b.component}</td>
+                      <td className="px-4 py-3 text-gray-900 font-mono">
+                        {b.component}
+                        {b.pending && <PendingTag />}
+                      </td>
                       <td className="px-4 py-3 text-emerald-600 tabular-nums font-semibold">
                         {b.qty}
                       </td>
@@ -315,7 +248,10 @@ export default function BorrowsPage() {
               <tbody className="divide-y divide-gray-200">
                 {returned.map(b => (
                   <tr key={b.id} className="opacity-60 hover:opacity-80">
-                    <td className="px-4 py-3 text-gray-700 font-mono">{b.component}</td>
+                    <td className="px-4 py-3 text-gray-700 font-mono">
+                      {b.component}
+                      {b.pending && <PendingTag />}
+                    </td>
                     <td className="px-4 py-3 text-gray-500 tabular-nums">{b.qty}</td>
                     <td className="px-4 py-3 text-gray-500">{b.borrower}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs font-mono">

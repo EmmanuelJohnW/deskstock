@@ -1,15 +1,15 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { getSupabaseClient } from '@/lib/supabase/client'
-import { useInventory } from '@/lib/inventory/context'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { useInventoryData } from '@/lib/offline/data'
 import { computeForecasts } from './forecast'
-import type { ComponentForecast, LedgerEntry } from './types'
+import type { ComponentForecast } from './types'
 
-const REFRESH_INTERVAL_MS = 5 * 60 * 1000
-// Supabase caps a single select at 1000 rows; page through the ledger so
-// older history (which sets each component's first-seen date) isn't cut off.
-const LEDGER_PAGE_SIZE = 1000
+// Forecasts are derived from the shared inventory data (src/lib/offline/data),
+// so they reflect actions queued offline and update the moment stock changes.
+
+/** Re-evaluate "today" periodically so days-remaining stays current on an open tab. */
+const CLOCK_TICK_MS = 5 * 60 * 1000
 
 interface ForecastContextValue {
   forecasts: ComponentForecast[]
@@ -20,94 +20,30 @@ interface ForecastContextValue {
 
 const ForecastContext = createContext<ForecastContextValue | null>(null)
 
-async function fetchLedger(inventoryId: number): Promise<LedgerEntry[]> {
-  const supabase = getSupabaseClient()
-  const fetchPage = async (from: number, acc: LedgerEntry[]): Promise<LedgerEntry[]> => {
-    const { data, error } = await supabase
-      .from('inventory_ledger')
-      .select('component, delta, reason, created_at')
-      .eq('inventory_id', inventoryId)
-      .order('id', { ascending: true })
-      .range(from, from + LEDGER_PAGE_SIZE - 1)
-    if (error) throw new Error(error.message)
-    const rows = [...acc, ...((data ?? []) as LedgerEntry[])]
-    return (data ?? []).length < LEDGER_PAGE_SIZE ? rows : fetchPage(from + LEDGER_PAGE_SIZE, rows)
-  }
-  return fetchPage(0, [])
-}
-
-async function fetchStock(inventoryId: number): Promise<Record<string, number>> {
-  const { data, error } = await getSupabaseClient().rpc('get_inventory', { p_inventory_id: inventoryId })
-  if (error) throw new Error(error.message)
-  const rows = (data ?? []) as { component: string; qty: number }[]
-  return Object.fromEntries(rows.map(r => [r.component, Number(r.qty)]))
-}
-
 interface ForecastProviderProps {
   children: React.ReactNode
 }
 
-/**
- * Loads stockout forecasts for the inventory selected in the nav dropdown,
- * once, for everything below it (nav badge and Forecast page share it).
- * inventory_ledger has no realtime feed, so anything that changes stock
- * should call `refresh()` from useForecasts() afterwards.
- */
 export function ForecastProvider({ children }: ForecastProviderProps) {
-  const { selectedInventoryId } = useInventory()
-  const [forecasts, setForecasts] = useState<ComponentForecast[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  // Each load gets an id; only the latest one may update state, so a slow
-  // response for a previously selected inventory can't overwrite the current one.
-  const latestRequest = useRef(0)
-
-  const refresh = useCallback(async () => {
-    const requestId = latestRequest.current + 1
-    latestRequest.current = requestId
-    const isCurrent = () => latestRequest.current === requestId
-
-    if (selectedInventoryId === null) {
-      setForecasts([])
-      setError(null)
-      setLoading(false)
-      return
-    }
-    try {
-      const [ledger, stock] = await Promise.all([fetchLedger(selectedInventoryId), fetchStock(selectedInventoryId)])
-      if (!isCurrent()) return
-      setForecasts(computeForecasts(ledger, stock, new Date()))
-      setError(null)
-    } catch (err: unknown) {
-      if (!isCurrent()) return
-      console.error('[ForecastProvider] load failed:', err)
-      setError('Could not load forecast data. Check your connection and try again.')
-    } finally {
-      if (isCurrent()) setLoading(false)
-    }
-  }, [selectedInventoryId])
+  const { view, loading, error, refresh } = useInventoryData()
+  const [tick, setTick] = useState(0)
 
   useEffect(() => {
-    setLoading(true)
-    setForecasts([])
-    refresh()
-    const timer = setInterval(refresh, REFRESH_INTERVAL_MS)
-    // Stock can change elsewhere (device runs, other users); catch up when
-    // the user returns to this tab.
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') refresh()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      clearInterval(timer)
-      document.removeEventListener('visibilitychange', onVisible)
-      latestRequest.current += 1 // invalidate any load still in flight
-    }
-  }, [refresh])
+    const timer = setInterval(() => setTick(t => t + 1), CLOCK_TICK_MS)
+    return () => clearInterval(timer)
+  }, [])
 
-  return (
-    <ForecastContext.Provider value={{ forecasts, loading, error, refresh }}>{children}</ForecastContext.Provider>
-  )
+  // "Now" is read whenever the data changes (or the clock ticks), so actions
+  // made a moment ago count as usage rather than as future entries.
+  const forecasts = useMemo(() => {
+    if (!view) return []
+    const stock = Object.fromEntries(view.stock.map(s => [s.component, s.qty]))
+    return computeForecasts(view.ledger, stock, new Date())
+  }, [view, tick])
+
+  const value = useMemo(() => ({ forecasts, loading, error, refresh }), [forecasts, loading, error, refresh])
+
+  return <ForecastContext.Provider value={value}>{children}</ForecastContext.Provider>
 }
 
 export function useForecasts(): ForecastContextValue {

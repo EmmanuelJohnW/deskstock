@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { useForecasts } from '@/lib/forecast/context'
+import { useConnectivity } from '@/lib/offline/connectivity'
 import { useDevice } from '@/lib/device/useDevice'
 import { ArchBinMap } from '@/components/ArchBinMap'
 import { StatusBar } from '@/components/StatusBar'
@@ -16,6 +17,7 @@ const RUN_SETTLE_MS = 3000
 export default function DashboardPage() {
   const device = useDevice()
   const { refresh: refreshForecasts } = useForecasts()
+  const { isOffline } = useConnectivity()
 
   useEffect(() => {
     if (device.runStatus !== 'complete') return
@@ -42,6 +44,7 @@ export default function DashboardPage() {
       <NeedsInternet feature="Sorting" />
       <StatusBar
         online={device.online}
+        isUnknown={isOffline}
         rssi={device.rssi}
         fw={device.fw}
         runId={device.runId}

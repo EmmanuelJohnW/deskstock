@@ -7,12 +7,28 @@ function rssiQuality(rssi: number): string {
 
 interface StatusBarProps {
   online: boolean
+  /** This laptop is offline, so the device's real state can't be known. */
+  isUnknown?: boolean
   rssi: number | null
   fw: string | null
   runId: string | null
 }
 
-export function StatusBar({ online, rssi, fw, runId }: StatusBarProps) {
+export function StatusBar({ online, isUnknown = false, rssi, fw, runId }: StatusBarProps) {
+  if (isUnknown) {
+    return (
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 sm:px-5 py-2.5 sm:py-3 bg-white/90 border-b border-gray-200 backdrop-blur text-sm">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full shrink-0 bg-gray-300" />
+          <span className="text-gray-500">Device status unknown</span>
+        </div>
+        <span className="text-gray-400 text-xs">
+          This laptop is offline. The device may still be sorting and saving online.
+        </span>
+      </header>
+    )
+  }
+
   return (
     <header className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 sm:px-5 py-2.5 sm:py-3 bg-white/90 border-b border-gray-200 backdrop-blur text-sm">
       <div className="flex items-center gap-2">

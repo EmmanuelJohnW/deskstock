@@ -7,6 +7,7 @@ import { DeviceLogTerminal } from '@/components/DeviceLogTerminal'
 import { LIVE_RUN_STALE_MS } from '@/lib/device/liveRunStaleness'
 import { useInventory } from '@/lib/inventory/context'
 import { NeedsInternet } from '@/components/offline/NeedsInternet'
+import { useConnectivity } from '@/lib/offline/connectivity'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -195,6 +196,7 @@ const SETUP_STEPS = [
 
 export default function DevicePage() {
   const { selectedInventoryId } = useInventory()
+  const { isOffline } = useConnectivity()
   const [status, setStatus] = useState<DeviceStatus | null>(null)
   const [origin, setOrigin] = useState('')
   const [lastRefresh, setLastRefresh] = useState(0)
@@ -242,7 +244,15 @@ export default function DevicePage() {
           </button>
         </div>
 
-        {status ? (
+        {isOffline ? (
+          <div className="p-5 rounded-xl bg-white border border-gray-200 text-sm">
+            <p className="font-semibold text-gray-700">Unknown</p>
+            <p className="mt-1 text-gray-500">
+              This laptop is offline, so it can&apos;t see the device. If the device still has internet, it keeps
+              sorting and saving online, and this page catches up when the laptop reconnects.
+            </p>
+          </div>
+        ) : status ? (
           <StatusBadge status={status} />
         ) : (
           <div className="p-5 rounded-xl bg-white border border-gray-200 text-gray-400 text-sm">

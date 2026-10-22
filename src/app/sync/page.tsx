@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useConnectivity } from '@/lib/offline/connectivity'
 import { useInventoryData } from '@/lib/offline/data'
 import { describeOp } from '@/lib/offline/describe'
@@ -56,6 +57,7 @@ export default function SyncPage() {
   const { isOffline, isSyncing, ops, lastSyncAt, syncNow, retry, discard, isForcedOffline, setForcedOffline } =
     useConnectivity()
   const { view } = useInventoryData()
+  const [switchError, setSwitchError] = useState<string | null>(null)
   const pending = ops.filter(o => o.status === 'pending')
   const failed = ops.filter(o => o.status === 'failed')
 
@@ -99,12 +101,16 @@ export default function SyncPage() {
           <input
             type="checkbox"
             checked={isForcedOffline}
-            onChange={e => setForcedOffline(e.target.checked)}
+            onChange={async e => setSwitchError(await setForcedOffline(e.target.checked))}
             className="h-4 w-4 accent-emerald-600"
           />
-          Work offline (simulate no internet on this browser)
+          {process.env.NEXT_PUBLIC_LOCAL_HUB === 'true'
+            ? 'Work offline (this laptop and the sorting device stay off the internet; changes upload when switched off)'
+            : 'Work offline (simulate no internet on this browser)'}
         </label>
       </div>
+
+      {switchError && <p className="text-sm text-red-600">{switchError}</p>}
 
       <OpList
         title="Needs attention"

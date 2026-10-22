@@ -68,7 +68,8 @@ interface ConnectivityValue {
   discard: (opId: string) => Promise<void>
   /** Simulate being offline on this browser (for testing and demos). */
   isForcedOffline: boolean
-  setForcedOffline: (on: boolean) => void
+  /** Resolves to an error message if the laptop hub couldn't be switched. */
+  setForcedOffline: (on: boolean) => Promise<string | null>
 }
 
 const ConnectivityContext = createContext<ConnectivityValue | null>(null)
@@ -164,18 +165,57 @@ export function ConnectivityProvider({ children }: { children: React.ReactNode }
     setOffline(!(await canReachServer()))
   }, [setOffline])
 
+  const storeForced = (on: boolean) => {
+    try {
+      if (on) window.localStorage.setItem(FORCE_OFFLINE_KEY, 'true')
+      else window.localStorage.removeItem(FORCE_OFFLINE_KEY)
+    } catch {
+      // Storage unavailable: the switch just won't stick.
+    }
+  }
+
   const setForcedOffline = useCallback(
-    (on: boolean) => {
-      try {
-        if (on) window.localStorage.setItem(FORCE_OFFLINE_KEY, 'true')
-        else window.localStorage.removeItem(FORCE_OFFLINE_KEY)
-      } catch {
-        // Storage unavailable: the switch just won't stick.
+    async (on: boolean): Promise<string | null> => {
+      // Laptop hub: the same switch keeps the laptop's server (and so the
+      // sorting device) off the internet. Its answer is authoritative, so the
+      // dashboard never shows a mode the laptop isn't actually in.
+      let applied = on
+      let problem: string | null = null
+      if (IS_HUB) {
+        try {
+          const res = await fetch('/api/local/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ offline: on }),
+          })
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          applied = ((await res.json()) as { offline: boolean }).offline
+        } catch (err) {
+          console.error('[connectivity] could not set the laptop hub mode:', err)
+          problem = 'Could not switch the laptop. Open the dashboard at http://localhost:3000 and make sure `npm run hub` is running.'
+          applied = isForcedOffline()
+        }
       }
-      check()
+      storeForced(applied)
+      await check()
+      return problem
     },
     [check],
   )
+
+  // Laptop hub: the server's switch is the source of truth (it survives reloads).
+  useEffect(() => {
+    if (!IS_HUB) return
+    fetch('/api/local/mode', { cache: 'no-store' })
+      .then(res => (res.ok ? (res.json() as Promise<{ offline: boolean }>) : null))
+      .then(mode => {
+        if (mode && mode.offline !== isForcedOffline()) {
+          storeForced(mode.offline)
+          check()
+        }
+      })
+      .catch(() => {})
+  }, [check])
 
   useEffect(() => {
     check()

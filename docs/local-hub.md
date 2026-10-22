@@ -215,6 +215,77 @@ This also fixes an existing problem. The device used to ask for its component li
 
 > When copying from a chat, check the menu line `if (menuSelection >= 8) menuSelection = 0;`. Some apps turn `8)` into an emoji.
 
+### f) Optional but recommended for demos: a NETWORK MODE switch
+
+With steps a–e the device chooses on its own: website first, laptop if there's no internet. If the hotspot has mobile data, it will go online. To force **offline**, add a menu page that switches between **AUTO** and **LAPTOP ONLY**. It's remembered across reboots. In LAPTOP ONLY the device never contacts the internet (no website, no NTP clock sync).
+
+At the top, with the other includes and globals:
+
+```cpp
+#include <Preferences.h>
+Preferences prefs;
+bool laptopOnly = false;   // NETWORK MODE: false = AUTO, true = LAPTOP ONLY
+```
+
+In `setup()`, just before `connectWiFi();`, load the saved mode. Also replace `syncTimeNTP();` with the guarded version:
+
+```cpp
+  prefs.begin("deskstock", false);
+  laptopOnly = prefs.getBool("laptopOnly", false);
+
+  connectWiFi();
+  if (!laptopOnly) syncTimeNTP();   // no internet in LAPTOP ONLY (the laptop fixes the time)
+```
+
+In `testConnection()` (from step c), replace the "1) The website … 2) the laptop" block:
+
+```cpp
+  int httpCode;
+  if (laptopOnly) {
+    httpCode = fetchCatalog(LOCAL_BASE_URL);   // never contact the website
+    usingLaptop = true;
+  } else {
+    httpCode = fetchCatalog(API_BASE_URL);
+    usingLaptop = false;
+    if (httpCode < 0) {
+      httpCode = fetchCatalog(LOCAL_BASE_URL);
+      usingLaptop = (httpCode > 0);
+    }
+  }
+  activeBaseUrl = usingLaptop ? LOCAL_BASE_URL : API_BASE_URL;
+  connTestHttpCode = httpCode;
+```
+
+The rest of `testConnection()` stays as in step c.
+
+**Menu page:**
+1. Set `TOTAL_PAGES` to `9`.
+2. Change the wrap-around line in the S1 handler to `if (menuSelection >= 9) menuSelection = 0;`.
+3. In `updateDisplay()` → `case STATE_MENU:`, after the `menuSelection == 7` (RUN) block, add:
+
+```cpp
+      } else if (menuSelection == 8) {
+        display.setCursor(28, 4);
+        display.print("NETWORK MODE");
+        display.setCursor(29, 4);
+        display.print("NETWORK MODE");
+        display.setTextSize(2);
+        display.setCursor(laptopOnly ? 28 : 40, 28);
+        display.print(laptopOnly ? "LAPTOP" : "AUTO");
+        display.setTextSize(1);
+        display.setCursor(16, 54);
+        display.print("S2: switch mode");
+```
+
+4. In the S2 handler on the menu, after the `menuSelection == 7` (RUN) branch, add:
+
+```cpp
+        } else if (menuSelection == 8) {
+          laptopOnly = !laptopOnly;
+          prefs.putBool("laptopOnly", laptopOnly);
+          testConnection(true);   // use the new target straight away
+```
+
 ## 2. Laptop setup (once, while you still have internet)
 
 1. **Connect to the hotspot** "IphoneSE". On the iPhone, turn on **Maximize Compatibility** in Personal Hotspot.
@@ -244,6 +315,19 @@ This also fixes an existing problem. The device used to ask for its component li
 7. **Let the device fetch once while online** (Test Connection, or start a run), so the laptop saves the component list.
 
 ## 3. On the day
+
+### Purely offline demo (recommended with a hotspot that has mobile data)
+
+Two switches keep everything off the internet, even when the hotspot has data:
+
+| Where | Switch | Effect |
+|---|---|---|
+| **Device** | Menu → **NETWORK MODE** → **LAPTOP** (S2) | The device only talks to the laptop |
+| **Laptop** | Dashboard → **Sync** page (status pill) → **Work offline** | The laptop's dashboard and server stay offline; the device gets the saved component list; nothing uploads |
+
+Sort as usual; runs show live and wait on the laptop. After the demo, turn **Work offline** off (with internet) and they upload. Set the device back to **AUTO** for normal use.
+
+### Automatic (no switches)
 
 - Turn on the hotspot, start the hub (`npm run hub`), and open http://localhost:3000.
 - Power on the device. Its OLED shows the connection result:

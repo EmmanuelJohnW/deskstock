@@ -102,7 +102,9 @@ export default function SyncPage() {
             onChange={e => setForcedOffline(e.target.checked)}
             className="h-4 w-4 accent-emerald-600"
           />
-          Work offline (simulate no internet on this browser)
+          {process.env.NEXT_PUBLIC_LOCAL_HUB === 'true'
+            ? 'Work offline (this laptop and the sorting device stay off the internet; changes upload when switched off)'
+            : 'Work offline (simulate no internet on this browser)'}
         </label>
       </div>
 

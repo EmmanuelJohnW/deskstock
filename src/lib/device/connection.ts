@@ -4,6 +4,7 @@ import { LocalHubConnection } from './LocalHubConnection'
 import { LiveRunTracker } from './LiveRunTracker'
 import { LIVE_RUN_STALE_MS } from './liveRunStaleness'
 import type { DeviceConnection, DeviceMessage, MessageHandler } from './types'
+import { isForcedOffline } from '@/lib/offline/network'
 
 /**
  * On the laptop hub the device may report either online (Supabase Realtime)
@@ -51,5 +52,7 @@ export function createConnection(): DeviceConnection {
   const useMock = process.env.NEXT_PUBLIC_USE_MOCK === 'true'
   const isHub = process.env.NEXT_PUBLIC_LOCAL_HUB === 'true'
   if (useMock) return new MockConnection()
-  return isHub ? new HubAwareConnection() : new RealtimeConnection()
+  if (!isHub) return new RealtimeConnection()
+  // "Work offline" on the laptop: don't open a live connection to the internet at all.
+  return isForcedOffline() ? new LocalHubConnection() : new HubAwareConnection()
 }

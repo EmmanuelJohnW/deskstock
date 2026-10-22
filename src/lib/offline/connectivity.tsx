@@ -164,18 +164,45 @@ export function ConnectivityProvider({ children }: { children: React.ReactNode }
     setOffline(!(await canReachServer()))
   }, [setOffline])
 
+  const storeForced = (on: boolean) => {
+    try {
+      if (on) window.localStorage.setItem(FORCE_OFFLINE_KEY, 'true')
+      else window.localStorage.removeItem(FORCE_OFFLINE_KEY)
+    } catch {
+      // Storage unavailable: the switch just won't stick.
+    }
+  }
+
   const setForcedOffline = useCallback(
     (on: boolean) => {
-      try {
-        if (on) window.localStorage.setItem(FORCE_OFFLINE_KEY, 'true')
-        else window.localStorage.removeItem(FORCE_OFFLINE_KEY)
-      } catch {
-        // Storage unavailable: the switch just won't stick.
-      }
+      storeForced(on)
       check()
+      // Laptop hub: the same switch keeps the laptop's server (and so the
+      // sorting device) off the internet.
+      if (IS_HUB) {
+        fetch('/api/local/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ offline: on }),
+        }).catch(err => console.error('[connectivity] could not set the laptop hub mode:', err))
+      }
     },
     [check],
   )
+
+  // Laptop hub: the server's switch is the source of truth (it survives reloads).
+  useEffect(() => {
+    if (!IS_HUB) return
+    fetch('/api/local/mode', { cache: 'no-store' })
+      .then(res => (res.ok ? (res.json() as Promise<{ offline: boolean }>) : null))
+      .then(mode => {
+        if (mode && mode.offline !== isForcedOffline()) {
+          storeForced(mode.offline)
+          check()
+        }
+      })
+      .catch(() => {})
+  }, [check])
 
   useEffect(() => {
     check()

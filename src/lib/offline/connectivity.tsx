@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { discardOp, enqueue, mergeProgress, retryOp } from './outbox'
+import { discardOp, enqueue, insertByTime, mergeProgress, retryOp } from './outbox'
 import { isForcedOffline, FORCE_OFFLINE_KEY } from './network'
 import { loadOutbox, saveOutbox } from './store'
 import { runSync, sendOp } from './sync'
@@ -15,6 +15,41 @@ const AUTO_SYNC_INTERVAL_MS = 60_000
 const SYNC_LOCK = 'deskstock-sync'
 const OUTBOX_LOCK = 'deskstock-outbox'
 const CHANNEL = 'deskstock-outbox'
+/** Laptop hub builds (docs/local-hub.md): import sort runs the device saved on this laptop. */
+const IS_HUB = process.env.NEXT_PUBLIC_LOCAL_HUB === 'true'
+const HUB_IMPORT_INTERVAL_MS = 3000
+const SELECTED_INVENTORY_KEY = 'deskstock.selectedInventoryId'
+
+interface HubPendingRun {
+  run_id: string
+  inventory_id: number | null
+  started_at: string
+  duration_ms: number
+  bins: { name: string; weight_g: number; bin: number; count: number }[]
+  received_at: string
+}
+
+const hubOpId = (runId: string) => `hubrun-${runId}`
+
+function selectedInventoryId(): number | null {
+  try {
+    const raw = window.localStorage.getItem(SELECTED_INVENTORY_KEY)
+    return raw ? Number(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function hubRunToOp(run: HubPendingRun, inventoryId: number): Op {
+  return {
+    id: hubOpId(run.run_id),
+    type: 'sort_run',
+    inventoryId,
+    payload: { run_id: run.run_id, started_at: run.started_at, duration_ms: run.duration_ms, bins: run.bins },
+    createdAt: run.received_at,
+    status: 'pending',
+  }
+}
 
 interface ConnectivityValue {
   isOffline: boolean
@@ -236,7 +271,49 @@ export function ConnectivityProvider({ children }: { children: React.ReactNode }
     [updateOps, syncNow],
   )
 
-  const discard = useCallback((opId: string) => updateOps(current => discardOp(current, opId)), [updateOps])
+  const discard = useCallback(
+    async (opId: string) => {
+      const op = opsRef.current.find(o => o.id === opId)
+      await updateOps(current => discardOp(current, opId))
+      // A discarded sort run must not be imported again from the laptop hub.
+      if (op?.type === 'sort_run') {
+        await fetch(`/api/local/pending/${encodeURIComponent(op.payload.run_id)}`, { method: 'DELETE' }).catch(() => {})
+      }
+    },
+    [updateOps],
+  )
+
+  // Laptop hub: bring sort runs the device saved on this laptop into the queue
+  // (works with no internet), in time order with other changes, then sync.
+  useEffect(() => {
+    if (!IS_HUB) return
+    const importRuns = async () => {
+      let runs: HubPendingRun[]
+      try {
+        const res = await fetch('/api/local/pending', { cache: 'no-store' })
+        if (!res.ok) return
+        runs = ((await res.json()) as { runs: HubPendingRun[] }).runs
+      } catch {
+        return
+      }
+      const known = new Set(opsRef.current.map(o => o.id))
+      const fresh = runs.filter(r => !known.has(hubOpId(r.run_id)))
+      if (fresh.length === 0) return
+      const fallbackInventory = selectedInventoryId()
+      await updateOps(current => {
+        const present = new Set(current.map(o => o.id))
+        return fresh.reduce((ops, run) => {
+          const inventoryId = run.inventory_id ?? fallbackInventory
+          if (inventoryId === null || present.has(hubOpId(run.run_id))) return ops
+          return insertByTime(ops, hubRunToOp(run, inventoryId))
+        }, current)
+      }).catch(err => console.error('[connectivity] could not import laptop hub runs:', err))
+      syncNow()
+    }
+    importRuns()
+    const timer = setInterval(importRuns, HUB_IMPORT_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [updateOps, syncNow])
 
   const value = useMemo(
     () => ({

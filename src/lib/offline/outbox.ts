@@ -138,3 +138,13 @@ function remapFrom(o: Op, result: Op): Op {
   }
   return o
 }
+
+/**
+ * Adds an action that happened earlier than some queued ones (a sort run
+ * imported from the laptop hub) in time order among the pending actions, so
+ * syncing replays events in the order they really happened.
+ */
+export function insertByTime(ops: readonly Op[], next: Op): Op[] {
+  const index = ops.findIndex(o => o.status === 'pending' && o.createdAt > next.createdAt)
+  return index === -1 ? [...ops, next] : [...ops.slice(0, index), next, ...ops.slice(index)]
+}

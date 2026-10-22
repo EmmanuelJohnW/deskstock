@@ -85,9 +85,10 @@ export function InventoryProvider({ children }: InventoryProviderProps) {
   // "Start Count Session" click. Fires on manual switches and on the
   // initial auto-pick alike, so the device always has *some* active
   // inventory as soon as the dashboard has loaded one.
-  // Skipped while offline; re-sent when the connection comes back.
+  // Skipped while offline (re-sent when the connection comes back), except on
+  // the laptop hub, whose local server records it for the device's runs.
   useEffect(() => {
-    if (selectedInventoryId === null || isOffline) return
+    if (selectedInventoryId === null || (isOffline && process.env.NEXT_PUBLIC_LOCAL_HUB !== 'true')) return
     fetch('/api/active-inventory', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

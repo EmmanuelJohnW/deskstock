@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useForecasts } from '@/lib/forecast/context'
 import { useConnectivity } from '@/lib/offline/connectivity'
+import { HUB_FW_LABEL } from '@/lib/device/LocalHubConnection'
 import { useDevice } from '@/lib/device/useDevice'
 import { ArchBinMap } from '@/components/ArchBinMap'
 import { StatusBar } from '@/components/StatusBar'
@@ -17,7 +18,11 @@ const RUN_SETTLE_MS = 3000
 export default function DashboardPage() {
   const device = useDevice()
   const { refresh: refreshForecasts } = useForecasts()
-  const { isOffline } = useConnectivity()
+  const { isOffline, ops } = useConnectivity()
+  // On the laptop hub the device can report straight to this laptop, so its
+  // status is known even without internet.
+  const isStatusFromHub = device.fw === HUB_FW_LABEL
+  const pendingRuns = ops.filter(o => o.type === 'sort_run' && o.status === 'pending').length
 
   useEffect(() => {
     if (device.runStatus !== 'complete') return
@@ -41,10 +46,18 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 flex flex-col bg-gray-50 text-gray-900">
-      <NeedsInternet feature="Sorting" />
+      {!isStatusFromHub && <NeedsInternet feature="Sorting" />}
+      {pendingRuns > 0 && (
+        <div role="status" className="border-b border-sky-200 bg-sky-50 px-4 py-2.5 text-sm text-sky-800 sm:px-6">
+          <span className="font-semibold">
+            {pendingRuns} sort run{pendingRuns === 1 ? '' : 's'} saved on this laptop.
+          </span>{' '}
+          {isOffline ? 'They will upload when the internet is back.' : 'Uploading…'}
+        </div>
+      )}
       <StatusBar
         online={device.online}
-        isUnknown={isOffline}
+        isUnknown={isOffline && !isStatusFromHub}
         rssi={device.rssi}
         fw={device.fw}
         runId={device.runId}

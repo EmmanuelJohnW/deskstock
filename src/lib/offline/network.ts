@@ -2,7 +2,8 @@
 // answering with an error. supabase-js doesn't throw on these: it returns
 // { error } with the browser's fetch message, which differs per browser.
 
-const NETWORK_MESSAGE = /failed to fetch|networkerror|load failed|network request failed|fetch failed/i
+const NETWORK_MESSAGE =
+  /failed to fetch|networkerror|load failed|network request failed|fetch failed|operation was aborted|signal timed out/i
 
 export function isNetworkError(error: unknown): boolean {
   if (error instanceof TypeError) return true

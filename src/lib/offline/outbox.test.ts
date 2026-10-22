@@ -4,6 +4,7 @@ import {
   discardOp,
   enqueue,
   failOp,
+  insertByTime,
   mergeProgress,
   remapComponentId,
   retryOp,
@@ -177,5 +178,26 @@ describe('mergeProgress', () => {
     const merged = mergeProgress([edit], progressed, new Map([[edit.id, 'pending']]))
 
     expect((merged[0].payload as { componentId: number }).componentId).toBe(42)
+  })
+})
+
+describe('insertByTime', () => {
+  test('places an imported action before later pending actions', () => {
+    const early = op('add_stock', { component: 'A', qty: 1 }, { createdAt: '2026-10-22T10:00:00Z' })
+    const late = op('add_stock', { component: 'B', qty: 1 }, { createdAt: '2026-10-22T10:10:00Z' })
+    const sort = op(
+      'sort_run',
+      { run_id: 'run-1', started_at: 'x', duration_ms: 1, bins: [] },
+      { createdAt: '2026-10-22T10:05:00Z' },
+    )
+
+    expect(insertByTime([early, late], sort).map(o => o.id)).toEqual([early.id, sort.id, late.id])
+  })
+
+  test('goes last when nothing pending is newer', () => {
+    const done = op('add_stock', { component: 'A', qty: 1 }, { createdAt: '2026-10-22T11:00:00Z', status: 'confirmed' })
+    const sort = op('sort_run', { run_id: 'run-1', started_at: 'x', duration_ms: 1, bins: [] }, { createdAt: '2026-10-22T10:05:00Z' })
+
+    expect(insertByTime([done], sort).map(o => o.id)).toEqual([done.id, sort.id])
   })
 })

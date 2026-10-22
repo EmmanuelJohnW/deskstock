@@ -91,6 +91,10 @@ function applyOp(state: ViewState, op: Op): ViewState {
     }
     case 'delete_component':
       return { ...state, components: state.components.filter(c => c.id !== op.payload.componentId) }
+    case 'sort_run':
+      // A sort is a stocktake: its effect depends on reconciling against the
+      // server's expected stock, so it only shows once uploaded.
+      return state
   }
 }
 

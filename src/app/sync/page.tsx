@@ -137,8 +137,10 @@ export default function SyncPage() {
         <h2 className="mb-2 font-semibold text-gray-900">What works offline</h2>
         <p>
           Inventory, Forecast, Borrows (borrow, return, undo), Add Stock, Components and Reports, using the copy saved
-          the last time each inventory was opened online. Sorting and the Device page need internet, because the
-          sorting device talks directly to the online site.
+          the last time each inventory was opened online.{' '}
+          {process.env.NEXT_PUBLIC_LOCAL_HUB === 'true'
+            ? 'Sorting also works: on the hotspot the device sends its runs to this laptop, and they upload here when the internet is back.'
+            : 'Sorting and the Device page need internet, because the sorting device talks directly to the online site.'}
         </p>
       </section>
     </div>

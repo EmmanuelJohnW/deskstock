@@ -19,6 +19,18 @@ describe('describeOp', () => {
     [op('create_component', { tempId: -1, name: 'Buzzer', weight_g: 2.5 }), 'Register component Buzzer (2.5 g)'],
     [op('update_component', { componentId: 3, name: 'Button', weight_g: 1.2 }), 'Edit component → Button (1.2 g)'],
     [op('delete_component', { componentId: 3 }), 'Delete a component'],
+    [
+      op('sort_run', {
+        run_id: 'run-1',
+        started_at: AT,
+        duration_ms: 1,
+        bins: [
+          { name: 'Button', weight_g: 1.2, bin: 5, count: 30 },
+          { name: 'Buzzer', weight_g: 2.5, bin: 4, count: 16 },
+        ],
+      }),
+      'Sort run: 46 parts in 2 bins',
+    ],
   ])('%#: describes the action', (action, text) => {
     expect(describeOp(action)).toBe(text)
   })

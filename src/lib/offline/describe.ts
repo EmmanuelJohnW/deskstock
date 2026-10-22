@@ -28,5 +28,10 @@ export function describeOp(op: Op, borrows: readonly BorrowRow[] = []): string {
       return `Edit component → ${op.payload.name} (${op.payload.weight_g} g)`
     case 'delete_component':
       return 'Delete a component'
+    case 'sort_run': {
+      const parts = op.payload.bins.reduce((sum, b) => sum + b.count, 0)
+      const bins = op.payload.bins.length
+      return `Sort run: ${parts} part${parts === 1 ? '' : 's'} in ${bins} bin${bins === 1 ? '' : 's'}`
+    }
   }
 }

@@ -198,6 +198,38 @@ describe('sendOp', () => {
     expect(await sendOp(op('add_stock', { component: 'Button', qty: 1 }), fetchImpl)).toEqual({ kind: 'network' })
   })
 
+  test('a sort run from the laptop hub uploads to /api/runs with its inventory, then is removed from the hub', async () => {
+    const run = op(
+      'sort_run',
+      { run_id: 'run-123', started_at: AT, duration_ms: 60000, bins: [{ name: 'Button', weight_g: 1.2, bin: 5, count: 4 }] },
+      { inventoryId: 13 },
+    )
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ success: true }), { status: 201 }))
+
+    const result = await sendOp(run, fetchImpl)
+
+    expect(result).toEqual({ kind: 'ok' })
+    const calls = fetchImpl.mock.calls as unknown as [string, RequestInit][]
+    expect(calls[0][0]).toBe('/api/runs')
+    expect(JSON.parse(calls[0][1].body as string)).toEqual({
+      run_id: 'run-123',
+      started_at: AT,
+      duration_ms: 60000,
+      bins: [{ name: 'Button', weight_g: 1.2, bin: 5, count: 4 }],
+      inventory_id: 13,
+    })
+    expect(calls[1]).toEqual(['/api/local/pending/run-123', { method: 'DELETE' }])
+  })
+
+  test('a server that cannot reach the database counts as offline, not as a server error', async () => {
+    const result = await sendOp(
+      op('add_stock', { component: 'Button', qty: 1 }),
+      fakeFetch(500, { error: 'TypeError: fetch failed (offline)' }),
+    )
+
+    expect(result).toEqual({ kind: 'network' })
+  })
+
   test('a server error is retried later', async () => {
     const result = await sendOp(op('add_stock', { component: 'Button', qty: 1 }), fakeFetch(500, { error: 'boom' }))
 

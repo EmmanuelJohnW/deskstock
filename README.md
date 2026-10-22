@@ -6,6 +6,7 @@ Lab component inventory: an ESP32 sorter counts parts by weight, and this dashbo
 
 - **Stockout forecasting**: predicts when each component will run out, warns on every page before it happens, and suggests when and how much to reorder. See [docs/forecasting.md](docs/forecasting.md).
 - **Offline mode**: the dashboard keeps working without internet using a copy saved on the laptop, and syncs changes when the connection returns. See [docs/offline.md](docs/offline.md).
+- **Laptop hub**: the sorting device can send to the laptop over a phone hotspot with no internet; runs show live and upload later. See [docs/local-hub.md](docs/local-hub.md).
 
 ## Tests
 

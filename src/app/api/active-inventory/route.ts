@@ -2,6 +2,9 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
+import { isHubMode } from '@/lib/localHub/net'
+import { setSelectedInventory } from '@/lib/localHub/store'
+import { isNetworkError } from '@/lib/offline/network'
 
 // ─── Migration SQL — run in Supabase SQL editor ───────────────────────────────
 //
@@ -65,7 +68,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 })
   }
 
-  const supabase = getServerClient()
+  // On the laptop hub, remember the selection so the device's runs are counted
+  // into it even when there's no internet to save it online.
+  if (isHubMode()) await setSelectedInventory(parsed.data.inventory_id)
+
+  const supabase = getServerClient({ fastFail: true })
 
   const { data: inventory, error: inventoryError } = await supabase
     .from('inventories')
@@ -73,6 +80,9 @@ export async function POST(req: NextRequest) {
     .eq('id', parsed.data.inventory_id)
     .maybeSingle()
 
+  if (inventoryError && isHubMode() && isNetworkError(inventoryError)) {
+    return NextResponse.json({ success: true, savedOnLaptopOnly: true })
+  }
   if (inventoryError) {
     console.error('[POST /api/active-inventory] inventory lookup failed:', inventoryError.message)
     return NextResponse.json({ success: false, error: inventoryError.message }, { status: 500 })

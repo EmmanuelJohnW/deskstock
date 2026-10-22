@@ -1,10 +1,12 @@
 import 'server-only'
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerClient } from '@/lib/supabase/server'
 import { logDeviceCall } from '@/lib/deviceLog'
 import { LIVE_RUN_STALE_MS } from '@/lib/device/liveRunStaleness'
 import { persistCompleteRun, CompleteRunSchema, CompleteRunBinSchema } from '@/lib/ingest/completeRun'
+import { isHubMode } from '@/lib/localHub/net'
+import { fixStartedAt, getSelectedInventory, hubMemory, savePendingRun } from '@/lib/localHub/store'
 
 // ─── Prerequisites — run in Supabase SQL editor before deploying ──────────────
 //
@@ -71,12 +73,63 @@ async function respond(
   body: Record<string, unknown>,
   summary: string,
 ): Promise<NextResponse> {
-  await logDeviceCall(supabase, { method: 'POST', endpoint: '/api/ingest', statusCode: status, summary })
+  const entry = { method: 'POST' as const, endpoint: '/api/ingest', statusCode: status, summary }
+  // On the laptop hub, never make the device wait on an internet request.
+  if (isHubMode()) after(() => logDeviceCall(supabase, entry))
+  else await logDeviceCall(supabase, entry)
   return NextResponse.json(body, { status })
 }
 
+type IngestBody = z.infer<typeof IngestSchema>
+
+/**
+ * Laptop hub (docs/local-hub.md): the device reached this laptop, usually
+ * because the hotspot has no internet. Keep the live view in memory and save
+ * finished runs on disk; the dashboard uploads them when it's back online.
+ */
+async function handleOnHub(supabase: ReturnType<typeof getServerClient>, data: IngestBody): Promise<NextResponse> {
+  const hub = hubMemory()
+  const now = new Date()
+  hub.deviceSeenAt = now.toISOString()
+
+  if (data.status === 'running') {
+    hub.live = {
+      run_id: data.run_id,
+      status: 'running',
+      elapsed_ms: data.elapsed_ms,
+      est_remaining_ms: data.est_remaining_ms,
+      bins: data.bins,
+      updated_at: now.toISOString(),
+    }
+    return respond(supabase, 200, { success: true, hub: true }, summarizeBins(data.bins))
+  }
+
+  try {
+    await savePendingRun({
+      run_id: data.run_id,
+      inventory_id: hub.runInventoryId ?? (await getSelectedInventory()),
+      started_at: fixStartedAt(data.started_at, data.duration_ms, now),
+      duration_ms: data.duration_ms,
+      bins: data.bins,
+      received_at: now.toISOString(),
+    })
+  } catch (err) {
+    console.error('[POST /api/ingest] could not save the run on the laptop:', err)
+    return respond(supabase, 500, { success: false, error: 'could_not_save_on_laptop' }, 'save on laptop failed')
+  }
+  // The next run must ask run-config again for its inventory.
+  hub.runInventoryId = null
+  hub.live = null
+  hub.lastCompleted = {
+    run_id: data.run_id,
+    total: data.bins.reduce((sum, b) => sum + b.count, 0),
+    duration_ms: data.duration_ms,
+  }
+  return respond(supabase, 201, { success: true, hub: true }, `saved on laptop ${summarizeBins(data.bins)}`)
+}
+
 export async function POST(req: NextRequest) {
-  const supabase = getServerClient()
+  const supabase = getServerClient({ fastFail: true })
 
   const token = req.headers.get('authorization')?.replace('Bearer ', '')
   if (!token || token !== process.env.INGEST_TOKEN) {
@@ -96,6 +149,7 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data
+  if (isHubMode()) return handleOnHub(supabase, data)
 
   // ── running: keep the live view current ───────────────────────────────────
   if (data.status === 'running') {

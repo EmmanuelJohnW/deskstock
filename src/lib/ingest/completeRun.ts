@@ -42,9 +42,47 @@ export interface CompleteRunResult {
 // Shared by /api/ingest (real firmware, token-gated) and /api/runs (browser
 // dev/mock, unauthenticated — see useDevice.ts) so both paths run through the
 // exact same session-tally/reconciliation logic instead of drifting apart.
+/**
+ * Finds the open count session for an inventory, or opens one (as the device's
+ * run-config does). Returns its id, or an error message.
+ */
+export async function ensureOpenSession(
+  supabase: SupabaseClient,
+  inventoryId: number,
+): Promise<{ id: number; inventory_id: number } | { error: string }> {
+  const { data: open, error: findError } = await supabase
+    .from('count_sessions')
+    .select('id, inventory_id')
+    .eq('status', 'open')
+    .eq('inventory_id', inventoryId)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (findError) return { error: findError.message }
+  if (open) return open as { id: number; inventory_id: number }
+
+  const { data: created, error: openError } = await supabase
+    .from('count_sessions')
+    .insert({ inventory_id: inventoryId, auto_opened: true })
+    .select('id, inventory_id')
+    .single()
+  if (openError) return { error: openError.message }
+  return created as { id: number; inventory_id: number }
+}
+
+interface PersistOptions {
+  /**
+   * Count into this inventory's session (opening one if needed) instead of the
+   * newest open session of any inventory. Used for runs uploaded later from
+   * the laptop hub, which know which inventory they were sorted into.
+   */
+  inventoryId?: number
+}
+
 export async function persistCompleteRun(
   supabase: SupabaseClient,
   data: CompleteRunInput,
+  options: PersistOptions = {},
 ): Promise<CompleteRunResult> {
   // Idempotency: a re-POST of the same run_id must not double-count the tally.
   const { data: existing } = await supabase
@@ -59,17 +97,27 @@ export async function persistCompleteRun(
 
   // Every cycle must belong to an open counting session — its inventory_id
   // is also how this cycle's data gets scoped to the right lab.
-  const { data: session, error: sessionError } = await supabase
-    .from('count_sessions')
-    .select('id, inventory_id')
-    .eq('status', 'open')
-    .order('started_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (sessionError) {
-    console.error('[persistCompleteRun] session lookup failed:', sessionError.message)
-    return { status: 500, body: { success: false, error: sessionError.message }, summary: 'session lookup failed' }
+  let session: { id: number; inventory_id: number } | null
+  if (options.inventoryId !== undefined) {
+    const result = await ensureOpenSession(supabase, options.inventoryId)
+    if ('error' in result) {
+      console.error('[persistCompleteRun] session lookup failed:', result.error)
+      return { status: 500, body: { success: false, error: result.error }, summary: 'session lookup failed' }
+    }
+    session = result
+  } else {
+    const { data: newest, error: sessionError } = await supabase
+      .from('count_sessions')
+      .select('id, inventory_id')
+      .eq('status', 'open')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (sessionError) {
+      console.error('[persistCompleteRun] session lookup failed:', sessionError.message)
+      return { status: 500, body: { success: false, error: sessionError.message }, summary: 'session lookup failed' }
+    }
+    session = newest as { id: number; inventory_id: number } | null
   }
 
   if (!session) {

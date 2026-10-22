@@ -1,3 +1,4 @@
+import { isNetworkError } from './network'
 import { failOp, remapComponentId } from './outbox'
 import type { Op } from './types'
 
@@ -67,6 +68,9 @@ function requestFor(op: Op): Request {
       }
     case 'delete_component':
       return { url: '/api/components', method: 'DELETE', body: { id: op.payload.componentId, inventory_id } }
+    case 'sort_run':
+      // Idempotent by run_id on the server; counted into the inventory it was sorted for.
+      return { url: '/api/runs', method: 'POST', body: { ...op.payload, inventory_id } }
   }
 }
 
@@ -94,12 +98,20 @@ export async function sendOp(op: Op, fetchImpl: FetchLike = fetch): Promise<Send
   }
 
   const data = await readBody(res)
+  if (res.ok && op.type === 'sort_run') {
+    // Uploaded: the laptop hub no longer needs its copy (best effort).
+    await fetchImpl(`/api/local/pending/${encodeURIComponent(op.payload.run_id)}`, { method: 'DELETE' }).catch(() => {})
+  }
   if (res.ok) {
     return op.type === 'create_component' && typeof data.id === 'number'
       ? { kind: 'ok', componentId: data.id }
       : { kind: 'ok' }
   }
   if (typeof data.error === 'string' && ALREADY_APPLIED.has(data.error)) return { kind: 'ok' }
+  // On the laptop hub the server itself may have no internet: that's "offline", not a server fault.
+  if (res.status >= 500 && typeof data.error === 'string' && isNetworkError({ message: data.error })) {
+    return { kind: 'network' }
+  }
   if (res.status >= 500) return { kind: 'retry', error: errorText(data.error, res.status) }
   return { kind: 'rejected', error: errorText(data.error, res.status) }
 }

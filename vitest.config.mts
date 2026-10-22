@@ -7,6 +7,6 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts'],
-    coverage: { include: ['src/lib/forecast/**/*.ts', 'src/lib/offline/**/*.ts'], exclude: ['**/*.test.ts'] },
+    coverage: { include: ['src/lib/forecast/**/*.ts', 'src/lib/offline/**/*.ts', 'src/lib/localHub/store.ts', 'src/lib/device/LiveRunTracker.ts'], exclude: ['**/*.test.ts'] },
   },
 })

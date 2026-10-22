@@ -103,6 +103,14 @@ export interface DeleteComponentPayload {
   componentId: number
 }
 
+/** A sort run the device sent to the laptop hub while offline (docs/local-hub.md). */
+export interface SortRunPayload {
+  run_id: string
+  started_at: string
+  duration_ms: number
+  bins: { name: string; weight_g: number; bin: number; count: number }[]
+}
+
 interface OpBase<T extends string, P> {
   /** Unique per action; also the borrow id for create_borrow and the ledger client_op_id for add_stock. */
   id: string
@@ -128,6 +136,7 @@ export type Op =
   | OpBase<'create_component', ComponentFieldsPayload & { tempId: number }>
   | OpBase<'update_component', UpdateComponentPayload>
   | OpBase<'delete_component', DeleteComponentPayload>
+  | OpBase<'sort_run', SortRunPayload>
 
 export type OpType = Op['type']
 

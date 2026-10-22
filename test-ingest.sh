@@ -15,6 +15,7 @@
 # Usage:
 #   INGEST_TOKEN=... ./test-ingest.sh
 #   INGEST_URL=http://localhost:3000 INGEST_TOKEN=... ./test-ingest.sh
+#   FAKE_NO_NTP=1 ...            # device clock not set (offline hotspot)
 #
 # NOTE: this writes real data. Completed counts replace stock levels for the
 # active inventory — point the dashboard at a test inventory first.
@@ -86,6 +87,9 @@ done
 duration_s=$((TICKS * TICK_DELAY))
 started_at=$(date -u -v-"${duration_s}"S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
   || date -u -d "-${duration_s} seconds" +%Y-%m-%dT%H:%M:%SZ)
+# FAKE_NO_NTP=1 mimics the device on a hotspot with no internet: its clock was
+# never set, so it reports a 1970 start time (the laptop hub corrects it).
+if [ "${FAKE_NO_NTP:-}" = "1" ]; then started_at="1970-01-01T00:00:12Z"; fi
 echo "Complete"
 post "{\"run_id\":\"$RUN_ID\",\"status\":\"complete\",\"duration_ms\":$((duration_s * 1000)),\"started_at\":\"$started_at\",\"bins\":$(bins_json $((TICKS * PER_TICK)))}"
 

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "hub": "next start -H 0.0.0.0 -p 3000"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
